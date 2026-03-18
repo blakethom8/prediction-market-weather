@@ -1,0 +1,16 @@
+cities:
+  - city_id: nyc
+    city_name: New York
+    timezone_name: America/New_York
+  - city_id: chi
+    city_name: Chicago
+    timezone_name: America/Chicago
+  - city_id: mia
+    city_name: Miami
+    timezone_name: America/New_York
+  - city_id: lax
+    city_name: Los Angeles
+    timezone_name: America/Los_Angeles
+  - city_id: dal
+    city_name: Dallas
+    timezone_name: America/Chicago

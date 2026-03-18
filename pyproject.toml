@@ -1,0 +1,12 @@
+[project]
+name = "prediction-market-weather"
+version = "0.1.0"
+description = "Weather-first research and trading infrastructure for prediction markets"
+requires-python = ">=3.11"
+dependencies = [
+  "duckdb",
+  "pandas",
+  "pyyaml",
+  "requests",
+  "pydantic",
+]
