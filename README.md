@@ -10,6 +10,39 @@ Estimate reality first, then compare it to market prices, then decide whether an
 - Clean warehouse in DuckDB
 - Forecast snapshots + settlement truth + market snapshots
 - Fixed `eval.py`, editable `signal.py`
+- Transparent decision journaling for bet review and future agent audits
 
 ## Core Principle
 Forecast first, bid second.
+
+## Developer Workflow
+
+### Setup
+```bash
+./scripts/setup_env.sh
+```
+
+### Bootstrap the warehouse
+```bash
+./scripts/bootstrap_db.sh
+```
+
+### Run self-tests
+```bash
+make test
+```
+
+## Current Status
+The repo now includes:
+- DuckDB schema scaffolding
+- a contract parser baseline for weather thresholds/buckets
+- a minimal signal/evaluator baseline
+- decision logging and rationale scaffolding
+- unit tests covering parser behavior, schema bootstrap, and decision logging
+
+## Near-Term Build Priorities
+1. Expand contract parsing for real Kalshi weather titles/rules
+2. Add city/station registry with settlement-aligned mappings
+3. Implement forecast ingestion snapshots
+4. Implement settlement truth ingestion
+5. Build the first contract × timestamp training rows from real data
