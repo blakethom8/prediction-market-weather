@@ -46,3 +46,8 @@ The repo now includes:
 3. Implement forecast ingestion snapshots
 4. Implement settlement truth ingestion
 5. Build the first contract × timestamp training rows from real data
+
+## Current Audit Tooling
+- `scripts/run_parser_audit.py <input.csv> [output.json]` will batch-audit market titles
+- `src/weatherlab/build/registry_loader.py` loads city/station registries into DuckDB
+- tests now cover parser behavior, parser audit summaries, schema bootstrap, registry loading, and decision logging

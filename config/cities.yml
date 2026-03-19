@@ -1,16 +1,73 @@
 cities:
   - city_id: nyc
     city_name: New York
+    state_code: NY
     timezone_name: America/New_York
+    lat: 40.7128
+    lon: -74.0060
+    primary_station_id: KNYC
+    aliases: ["new york", "new york city", "nyc"]
   - city_id: chi
     city_name: Chicago
+    state_code: IL
     timezone_name: America/Chicago
+    lat: 41.8781
+    lon: -87.6298
+    primary_station_id: KORD
+    aliases: ["chicago"]
   - city_id: mia
     city_name: Miami
+    state_code: FL
     timezone_name: America/New_York
+    lat: 25.7617
+    lon: -80.1918
+    primary_station_id: KMIA
+    aliases: ["miami"]
   - city_id: lax
     city_name: Los Angeles
+    state_code: CA
     timezone_name: America/Los_Angeles
+    lat: 34.0522
+    lon: -118.2437
+    primary_station_id: KCQT
+    aliases: ["los angeles", "la"]
   - city_id: dal
     city_name: Dallas
+    state_code: TX
     timezone_name: America/Chicago
+    lat: 32.7767
+    lon: -96.7970
+    primary_station_id: KDAL
+    aliases: ["dallas"]
+  - city_id: aus
+    city_name: Austin
+    state_code: TX
+    timezone_name: America/Chicago
+    lat: 30.2672
+    lon: -97.7431
+    primary_station_id: KAUS
+    aliases: ["austin"]
+  - city_id: den
+    city_name: Denver
+    state_code: CO
+    timezone_name: America/Denver
+    lat: 39.7392
+    lon: -104.9903
+    primary_station_id: KDEN
+    aliases: ["denver"]
+  - city_id: phl
+    city_name: Philadelphia
+    state_code: PA
+    timezone_name: America/New_York
+    lat: 39.9526
+    lon: -75.1652
+    primary_station_id: KPHL
+    aliases: ["philadelphia", "philly"]
+  - city_id: hou
+    city_name: Houston
+    state_code: TX
+    timezone_name: America/Chicago
+    lat: 29.7604
+    lon: -95.3698
+    primary_station_id: KHOU
+    aliases: ["houston"]

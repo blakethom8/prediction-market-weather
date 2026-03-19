@@ -1,0 +1,82 @@
+stations:
+  - station_id: KNYC
+    city_id: nyc
+    station_name: Central Park
+    network: nws
+    timezone_name: America/New_York
+    lat: 40.7790
+    lon: -73.9692
+    is_primary: true
+    notes: "Representative NYC climate station; verify against specific Kalshi contract rules."
+  - station_id: KORD
+    city_id: chi
+    station_name: Chicago O'Hare International Airport
+    network: nws
+    timezone_name: America/Chicago
+    lat: 41.9786
+    lon: -87.9048
+    is_primary: true
+    notes: "Default Chicago settlement proxy pending exact contract rule verification."
+  - station_id: KMIA
+    city_id: mia
+    station_name: Miami International Airport
+    network: nws
+    timezone_name: America/New_York
+    lat: 25.7959
+    lon: -80.2870
+    is_primary: true
+    notes: "Default Miami settlement proxy pending exact contract rule verification."
+  - station_id: KCQT
+    city_id: lax
+    station_name: Downtown Los Angeles USC Campus / CQT area proxy
+    network: nws
+    timezone_name: America/Los_Angeles
+    lat: 34.0236
+    lon: -118.2911
+    is_primary: true
+    notes: "LA climate reporting is tricky; must verify exact source per contract."
+  - station_id: KDAL
+    city_id: dal
+    station_name: Dallas Love Field
+    network: nws
+    timezone_name: America/Chicago
+    lat: 32.8471
+    lon: -96.8517
+    is_primary: true
+    notes: "Default Dallas settlement proxy pending exact contract rule verification."
+  - station_id: KAUS
+    city_id: aus
+    station_name: Austin-Bergstrom International Airport
+    network: nws
+    timezone_name: America/Chicago
+    lat: 30.1945
+    lon: -97.6699
+    is_primary: true
+    notes: "Default Austin settlement proxy pending exact contract rule verification."
+  - station_id: KDEN
+    city_id: den
+    station_name: Denver International Airport
+    network: nws
+    timezone_name: America/Denver
+    lat: 39.8561
+    lon: -104.6737
+    is_primary: true
+    notes: "Default Denver settlement proxy pending exact contract rule verification."
+  - station_id: KPHL
+    city_id: phl
+    station_name: Philadelphia International Airport
+    network: nws
+    timezone_name: America/New_York
+    lat: 39.8744
+    lon: -75.2424
+    is_primary: true
+    notes: "Default Philadelphia settlement proxy pending exact contract rule verification."
+  - station_id: KHOU
+    city_id: hou
+    station_name: William P. Hobby Airport
+    network: nws
+    timezone_name: America/Chicago
+    lat: 29.6454
+    lon: -95.2789
+    is_primary: true
+    notes: "Default Houston settlement proxy pending exact contract rule verification."

@@ -11,6 +11,18 @@ create table if not exists core.cities (
     primary_station_id varchar
 );
 
+create table if not exists core.weather_stations (
+    station_id varchar primary key,
+    city_id varchar,
+    station_name varchar,
+    network varchar,
+    timezone_name varchar,
+    lat double,
+    lon double,
+    is_primary boolean,
+    notes varchar
+);
+
 create table if not exists core.weather_contracts (
     contract_id varchar primary key,
     platform varchar,
