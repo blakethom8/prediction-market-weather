@@ -2,10 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.weatherlab.backtest.decision_logger import log_decision
-from src.weatherlab.backtest.rationale import build_rationale
-from src.weatherlab.build.bootstrap import bootstrap
-from src.weatherlab.db import connect
+from weatherlab.backtest.decision_logger import log_decision
+from weatherlab.backtest.rationale import build_rationale
+from weatherlab.build.bootstrap import bootstrap
+from weatherlab.db import connect
 
 
 class BootstrapAndLoggingTests(unittest.TestCase):

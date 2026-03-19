@@ -1,6 +1,6 @@
 import unittest
 
-from signal import choose_action, compute_edge
+from weatherlab.signal import choose_action, compute_edge
 
 
 class SignalBaselineTests(unittest.TestCase):

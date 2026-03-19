@@ -1,7 +1,7 @@
 import unittest
 from datetime import date
 
-from src.weatherlab.parse.contract_parser import parse_temperature_contract
+from weatherlab.parse.contract_parser import parse_temperature_contract
 
 
 class ContractParserTests(unittest.TestCase):

@@ -9,7 +9,7 @@ Estimate reality first, then compare it to market prices, then decide whether an
 - Kalshi daily weather markets first
 - Clean warehouse in DuckDB
 - Forecast snapshots + settlement truth + market snapshots
-- Fixed `eval.py`, editable `signal.py`
+- Fixed `eval.py`, editable signal logic under `weatherlab.signal`
 - Transparent decision journaling for bet review and future agent audits
 
 ## Core Principle
@@ -32,13 +32,15 @@ Forecast first, bid second.
 make test
 ```
 
+`make` targets prefer `.venv/bin/python` when that environment exists and run against `src/` directly, so the local test loop does not depend on reinstalling the package.
+
 ## Current Status
 The repo now includes:
 - DuckDB schema scaffolding
 - a contract parser baseline for weather thresholds/buckets
 - a minimal signal/evaluator baseline
 - decision logging and rationale scaffolding
-- unit tests covering parser behavior, schema bootstrap, and decision logging
+- unit tests covering parser behavior, evaluator scoring, schema bootstrap, registry loading, decision logging, and end-to-end training rows
 
 ## Near-Term Build Priorities
 1. Expand contract parsing for real Kalshi weather titles/rules

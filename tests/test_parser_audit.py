@@ -1,6 +1,6 @@
 import unittest
 
-from src.weatherlab.parse.audit import audit_titles, summarize_audit
+from weatherlab.parse.audit import audit_titles, summarize_audit
 
 
 class ParserAuditTests(unittest.TestCase):

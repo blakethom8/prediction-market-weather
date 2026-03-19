@@ -3,14 +3,14 @@ import unittest
 from datetime import date, datetime, UTC
 from pathlib import Path
 
-from src.weatherlab.build.bootstrap import bootstrap
-from src.weatherlab.build.registry_loader import load_all_registries
-from src.weatherlab.build.training_rows import materialize_training_rows
-from src.weatherlab.db import connect
-from src.weatherlab.ingest.contracts import ingest_contract
-from src.weatherlab.ingest.forecast_snapshots import ingest_forecast_snapshot
-from src.weatherlab.ingest.market_snapshots import ingest_market_snapshot
-from src.weatherlab.ingest.settlement_observations import ingest_settlement_observation
+from weatherlab.build.bootstrap import bootstrap
+from weatherlab.build.registry_loader import load_all_registries
+from weatherlab.build.training_rows import materialize_training_rows
+from weatherlab.db import connect
+from weatherlab.ingest.contracts import ingest_contract
+from weatherlab.ingest.forecast_snapshots import ingest_forecast_snapshot
+from weatherlab.ingest.market_snapshots import ingest_market_snapshot
+from weatherlab.ingest.settlement_observations import ingest_settlement_observation
 
 
 class EndToEndTrainingRowTests(unittest.TestCase):

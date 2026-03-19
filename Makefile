@@ -1,12 +1,15 @@
+VENV_PYTHON := .venv/bin/python
+PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),python3)
+
 bootstrap:
-	PYTHONPATH=. python3 -m src.weatherlab.build.bootstrap
+	PYTHONPATH=src $(PYTHON) -m weatherlab.build.bootstrap
 
 setup:
 	python3 -m venv .venv
-	. .venv/bin/activate && pip install --upgrade pip && pip install -e .
+	$(VENV_PYTHON) -m pip install -e .
 
 test:
-	PYTHONPATH=. python3 -m unittest discover -s tests -v
+	PYTHONPATH=src $(PYTHON) -m unittest discover -s tests -v
 
 selftest: test
 
@@ -14,4 +17,4 @@ checks:
 	@echo "TODO: add SQL/data integrity checks"
 
 run-eval:
-	PYTHONPATH=. python3 eval.py
+	PYTHONPATH=src $(PYTHON) eval.py

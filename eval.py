@@ -1,42 +1,16 @@
-"""Fixed evaluator/backtester for weather market experiments."""
+"""Compatibility wrapper for the package-owned evaluation module."""
 
-from __future__ import annotations
+from pathlib import Path
+import sys
 
-from dataclasses import dataclass
+SRC_DIR = Path(__file__).resolve().parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
-from signal import choose_action, compute_edge
+from weatherlab.evaluation import EvalRow, main, score_row
 
-
-@dataclass
-class EvalRow:
-    market_ticker: str
-    fair_prob: float
-    tradable_yes_ask: float
-    resolved_yes: int
-
-
-def score_row(row: EvalRow, min_edge: float = 0.05) -> dict:
-    action = choose_action(
-        fair_prob=row.fair_prob,
-        tradable_yes_ask=row.tradable_yes_ask,
-        min_edge=min_edge,
-    )
-    edge = compute_edge(row.fair_prob, row.tradable_yes_ask)
-    pnl = 0.0
-    if action == "BUY_YES":
-        pnl = (1 - row.tradable_yes_ask) if row.resolved_yes else -row.tradable_yes_ask
-    return {
-        "market_ticker": row.market_ticker,
-        "action": action,
-        "edge": edge,
-        "pnl": pnl,
-    }
+__all__ = ["EvalRow", "score_row"]
 
 
 if __name__ == "__main__":
-    rows = [
-        EvalRow("TEST_A", 0.62, 0.50, 1),
-        EvalRow("TEST_B", 0.53, 0.50, 0),
-    ]
-    for row in rows:
-        print(score_row(row))
+    main()

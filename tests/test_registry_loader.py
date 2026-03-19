@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.weatherlab.build.bootstrap import bootstrap
-from src.weatherlab.build.registry_loader import load_all_registries
-from src.weatherlab.db import connect
+from weatherlab.build.bootstrap import bootstrap
+from weatherlab.build.registry_loader import load_all_registries
+from weatherlab.db import connect
 
 
 class RegistryLoaderTests(unittest.TestCase):

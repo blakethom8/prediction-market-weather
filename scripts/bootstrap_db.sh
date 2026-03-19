@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [ -f .venv/bin/activate ]; then
-  . .venv/bin/activate
+if [ -x .venv/bin/python ]; then
+  PYTHON=.venv/bin/python
+else
+  PYTHON=python3
 fi
-PYTHONPATH=. python3 -m src.weatherlab.build.bootstrap
+PYTHONPATH=src "$PYTHON" -m weatherlab.build.bootstrap
