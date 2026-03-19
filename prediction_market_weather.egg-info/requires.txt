@@ -1,5 +1,0 @@
-duckdb
-pandas
-pyyaml
-requests
-pydantic
