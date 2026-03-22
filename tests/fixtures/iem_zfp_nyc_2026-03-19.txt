@@ -1,0 +1,18 @@
+
+562 
+FPUS51 KOKX 192214
+ZFPOKX
+
+Zone Forecast Product
+National Weather Service New York NY
+614 PM EDT Thu Mar 19 2026
+
+NYZ072-201200-
+New York (Manhattan)-
+614 PM EDT Thu Mar 19 2026
+
+.TONIGHT...Partly cloudy this evening, then becoming mostly cloudy. Lows in the mid 30s.
+.FRIDAY...Partly sunny. Highs in the upper 50s. Southwest winds around 5 mph, becoming south 10 to 15 mph with gusts up to 25 mph in the afternoon.
+.FRIDAY NIGHT...Rain likely. Lows in the mid 40s. Chance of rain 70 percent.
+
+$$

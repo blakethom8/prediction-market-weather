@@ -66,6 +66,19 @@ WEATHER_FOCUS_CITIES=nyc,chi .venv/bin/python -m weatherlab.ingest.historical_fo
 Archive-source planning notes live in:
 - `docs/HISTORICAL_FORECAST_ARCHIVE_PLAN.md`
 
+## Real Archived Forecast Ingestion
+The repo now includes a first real issued-time historical forecast path for the focus cities:
+- source: `iem-zfp`
+- NYC via `ZFPOKX` Manhattan zone block
+- Chicago via `ZFPLOT` Central Cook zone block
+
+This is not the full NDFD archive path yet, but it is a real archived forecast source with issuance timestamps and city-targeted forecast text.
+
+Run the backfill with:
+```bash
+PYTHONPATH=src .venv/bin/python -c "from weatherlab.ingest.archived_nws_forecasts import backfill_archived_nws_zone_forecasts; print(backfill_archived_nws_zone_forecasts())"
+```
+
 Use city-level coverage diagnostics to see which cities currently have:
 - enough contracts/snapshots
 - official settlement coverage

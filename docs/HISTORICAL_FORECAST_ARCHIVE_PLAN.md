@@ -33,9 +33,28 @@ Reason:
 
 1. Lock NYC + Chicago as default focus cities.
 2. Build source-specific metadata and diagnostics around those cities.
-3. Implement the first real archived forecast ingestion path against NDFD archive.
-4. Use IEM text products as support/cross-checks where helpful.
-5. Keep Open-Meteo archive as a comparison/proxy layer only.
+3. Implement the first real archived forecast ingestion path.
+   - **Current implementation:** IEM archived Zone Forecast Products (`iem-zfp`) for NYC and Chicago
+   - NYC: `ZFPOKX` Manhattan block
+   - Chicago: `ZFPLOT` Central Cook block
+4. Implement the richer NDFD archive path as the next upgrade.
+5. Use IEM text products as support/cross-checks where helpful.
+6. Keep Open-Meteo archive as a comparison/proxy layer only.
+
+## Current Status
+
+Working now:
+- archived issued-time forecast fetch from IEM text archive
+- issuance timestamp parsing
+- city-specific block extraction for NYC and Chicago
+- target-day section extraction
+- approximate high-temperature parsing from NWS text phrases
+- ingestion into `core.forecast_snapshots` as source `iem-zfp`
+
+Still next:
+- richer gridded NDFD archive ingestion
+- cleaner precipitation / low-temp extraction
+- deduping and preferred-source selection between multiple archived issuances
 
 ## Success Condition
 

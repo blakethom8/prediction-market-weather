@@ -1,0 +1,20 @@
+
+915 
+FPUS53 KLOT 191907
+ZFPLOT
+
+Zone Forecast Product
+National Weather Service Chicago/Romeoville, IL
+207 PM CDT Thu Mar 19 2026
+
+ILZ104-201200-
+Central Cook-
+Including the cities of Chicago, Cicero, Oak Lawn, Oak Park, and La Grange
+207 PM CDT Thu Mar 19 2026
+
+.LATE THIS AFTERNOON...Mostly sunny. Temperatures in the mid to upper 50s.
+.TONIGHT...Partly cloudy in the evening, then becoming mostly cloudy. Lows in the lower 40s.
+.FRIDAY...Mostly cloudy. Highs in the lower 60s. West winds around 10 mph, becoming north in the afternoon.
+.FRIDAY NIGHT...Mostly cloudy. Lows in the upper 30s.
+
+$$

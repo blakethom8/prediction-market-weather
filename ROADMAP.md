@@ -55,6 +55,7 @@ Make the MVP testing environment more honest by strengthening:
 - tests and fixtures around both
 - focus-city historical pipeline maturity (start with NYC + Chicago)
 - archived forecast source plan centered on NDFD archive with IEM text fallback
+- first real archived issued-time forecast ingestion path (`iem-zfp`) for NYC + Chicago
 
 ## Current Architectural Priority
 
