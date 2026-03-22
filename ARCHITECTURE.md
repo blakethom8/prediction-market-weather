@@ -103,9 +103,10 @@ The immediate operating model is:
 
 1. create a **strategy session** for the day
 2. populate a **market board** across the available cities/contracts
-3. compare candidate bets across the board
-4. record a **paper bet** only after the day-level strategy is clear
-5. capture the outcome and retrospective review
+3. generate a daily strategy summary artifact
+4. review / approve / adjust the strategy explicitly
+5. record a **paper bet** only after the day-level strategy is clear
+6. capture the outcome and retrospective review
 
 This creates a simulation environment that behaves like live deployment even before real execution is turned on.
 

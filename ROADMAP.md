@@ -61,7 +61,8 @@ Make the MVP testing environment more honest by strengthening:
 
 The immediate product priority is now the **point-in-time betting architecture**:
 - compare the full daily board before selecting a bet
-- capture rationale, forecast context, and abstentions
+- generate a daily strategy package/report
+- capture rationale, forecast context, approvals, and abstentions
 - settle outcomes and review paper performance
 - improve daily edge selection through iteration
 - keep live/app code structurally separate from research/ML code even while they share one repo

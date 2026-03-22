@@ -27,3 +27,6 @@ backfill-forecasts:
 
 run-eval:
 	PYTHONPATH=src $(PYTHON) eval.py
+
+daily-board:
+	PYTHONPATH=src $(PYTHON) -m weatherlab.live.cli

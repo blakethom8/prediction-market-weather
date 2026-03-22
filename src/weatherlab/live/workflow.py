@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..db import connect
-from ..ops.strategy import create_strategy_session, populate_strategy_market_board
+from ..ops.strategy import create_strategy_session, populate_strategy_market_board, update_strategy_approval
 
 
 DEFAULT_SELECTION_FRAMEWORK = {
@@ -81,6 +81,7 @@ def summarize_strategy_board(*, board_rows: list[dict[str, Any]], focus_cities: 
         'focus_cities': list(focus_cities),
         'thesis': thesis,
         'board_size': len(board_rows),
+        'approval_status': 'pending_review',
         'proposed_count': len(proposed),
         'watch_count': len(watch),
         'pass_count': len(passes),
@@ -92,6 +93,22 @@ def summarize_strategy_board(*, board_rows: list[dict[str, Any]], focus_cities: 
     }
 
 
+def apply_strategy_review(*, strategy_id: str, decision: str, notes: dict[str, Any] | None = None, db_path: str | Path | None = None) -> None:
+    status_map = {
+        'approve': 'approved',
+        'reject': 'rejected',
+        'adjust': 'adjustments_requested',
+    }
+    if decision not in status_map:
+        raise ValueError(f'Unsupported strategy review decision: {decision}')
+    update_strategy_approval(
+        strategy_id=strategy_id,
+        approval_status=status_map[decision],
+        approval_notes=notes or {},
+        db_path=db_path,
+    )
+
+
 def render_daily_strategy_markdown(*, strategy_id: str, strategy_date_local: date, summary: dict[str, Any]) -> str:
     lines = [
         f'# Daily Strategy Summary — {strategy_date_local.isoformat()}',
@@ -99,6 +116,7 @@ def render_daily_strategy_markdown(*, strategy_id: str, strategy_date_local: dat
         f'- Strategy ID: `{strategy_id}`',
         f'- Generated (UTC): {summary["generated_at_utc"]}',
         f'- Focus cities: {", ".join(summary["focus_cities"])}',
+        f'- Approval status: {summary.get("approval_status", "pending_review")}',
         f'- Board size: {summary["board_size"]}',
         f'- Proposed bets: {summary["proposed_count"]}',
         f'- Watchlist: {summary["watch_count"]}',

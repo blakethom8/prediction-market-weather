@@ -11,7 +11,7 @@ from weatherlab.ingest.contracts import ingest_contract
 from weatherlab.ingest.market_snapshots import ingest_market_snapshot
 from weatherlab.ingest.open_meteo import ingest_open_meteo_daily_payload
 from weatherlab.ingest.settlement_observations import ingest_settlement_observation
-from weatherlab.live.workflow import generate_daily_strategy_package
+from weatherlab.live.workflow import apply_strategy_review, generate_daily_strategy_package
 
 
 class LiveWorkflowTests(unittest.TestCase):
@@ -94,7 +94,37 @@ class LiveWorkflowTests(unittest.TestCase):
         self.assertEqual(payload['board_rows'][0]['market_ticker'], 'TEST_NYC_54')
         markdown = Path(result['markdown_path']).read_text()
         self.assertIn('Daily Strategy Summary', markdown)
+        self.assertIn('Approval status: pending_review', markdown)
         self.assertIn('TEST_NYC_54', markdown)
+
+    def test_apply_strategy_review_updates_approval_state(self):
+        self._seed_market()
+        result = generate_daily_strategy_package(
+            strategy_date_local=date(2026, 3, 23),
+            thesis='Use the daily board to compare paper bets before approving any one trade.',
+            focus_cities=['nyc'],
+            artifacts_dir=self.artifacts_dir,
+            db_path=self.db_path,
+        )
+        apply_strategy_review(
+            strategy_id=result['strategy_id'],
+            decision='adjust',
+            notes={'reason': 'Reduce exposure and revisit near close.'},
+            db_path=self.db_path,
+        )
+
+        from weatherlab.db import connect
+        con = connect(db_path=self.db_path)
+        try:
+            row = con.execute(
+                'select approval_status, approval_notes_json from ops.strategy_sessions where strategy_id = ?',
+                [result['strategy_id']],
+            ).fetchone()
+        finally:
+            con.close()
+
+        self.assertEqual(row[0], 'adjustments_requested')
+        self.assertIn('Reduce exposure', row[1])
 
 
 if __name__ == '__main__':

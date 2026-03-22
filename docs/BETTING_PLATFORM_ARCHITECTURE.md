@@ -74,8 +74,9 @@ Flow:
 2. strategy report generated automatically
 3. Blake reviews proposed bets and passes
 4. Blake approves, edits, or rejects
-5. paper bets are recorded
-6. results are settled and reviewed later
+5. approval state is stored explicitly on the strategy session
+6. paper bets are recorded
+7. results are settled and reviewed later
 
 Why this mode first:
 - high trust
@@ -106,6 +107,9 @@ Represents the day’s strategy container.
 Fields should include:
 - date
 - status
+- approval status
+- approval timestamp
+- approval notes
 - focus cities
 - thesis
 - selection framework

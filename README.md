@@ -84,6 +84,7 @@ The project is now also centered around a day-of operating loop:
 - create a strategy session
 - compare the full daily market board across cities
 - generate a daily strategy summary
+- review / approve / adjust the strategy
 - record paper bets with rationale
 - settle and review outcomes
 
@@ -100,6 +101,11 @@ This path should remain structurally separate from the historical research / ML 
 
 Betting platform system design doc:
 - `docs/BETTING_PLATFORM_ARCHITECTURE.md`
+
+Generate a day-of package with:
+```bash
+make daily-board -- --date 2026-03-23 --cities nyc,chi --thesis "Compare the full daily board before approving paper bets."
+```
 
 Use city-level coverage diagnostics to see which cities currently have:
 - enough contracts/snapshots

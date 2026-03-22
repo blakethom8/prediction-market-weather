@@ -8,6 +8,29 @@ from ..db import connect
 from ..utils.ids import new_id
 
 
+def update_strategy_approval(
+    *,
+    strategy_id: str,
+    approval_status: str,
+    approval_notes: dict | None = None,
+    db_path: str | Path | None = None,
+) -> None:
+    con = connect(db_path=db_path)
+    try:
+        con.execute(
+            '''
+            update ops.strategy_sessions
+            set approval_status = ?,
+                approved_at_utc = ?,
+                approval_notes_json = ?
+            where strategy_id = ?
+            ''',
+            [approval_status, datetime.now(UTC), json.dumps(approval_notes or {}), strategy_id],
+        )
+    finally:
+        con.close()
+
+
 def create_strategy_session(
     *,
     strategy_date_local: date,
@@ -16,6 +39,7 @@ def create_strategy_session(
     selection_framework: dict | None = None,
     notes: dict | None = None,
     status: str = 'draft',
+    approval_status: str = 'pending_review',
     db_path: str | Path | None = None,
 ) -> str:
     strategy_id = new_id('strategy')
@@ -25,14 +49,18 @@ def create_strategy_session(
             '''
             insert into ops.strategy_sessions (
                 strategy_id, created_at_utc, strategy_date_local, status,
+                approval_status, approved_at_utc, approval_notes_json,
                 focus_cities_json, thesis, selection_framework_json, notes_json
-            ) values (?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             [
                 strategy_id,
                 datetime.now(UTC),
                 strategy_date_local,
                 status,
+                approval_status,
+                None,
+                json.dumps({}),
                 json.dumps(list(focus_cities)),
                 thesis,
                 json.dumps(selection_framework or {}),
