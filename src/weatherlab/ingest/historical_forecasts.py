@@ -1,8 +1,11 @@
 """Backfill historical weather data from Open-Meteo archive API.
 
-Fetches actual observed high/low temperatures for all contract dates
-and stores them as forecast snapshots with probability distributions.
-This enables the training view to compute fair_prob and edge.
+Fetches actual observed high/low temperatures for contract dates and stores
+proxy forecast snapshots with probability distributions.
+
+Important: this is a historical coverage / diagnostic layer, not a true
+"available-at-the-time" forecast archive. Use it as a proxy source while the
+real archived-forecast path is being built.
 
 Uses the Open-Meteo archive endpoint (not the forecast endpoint)
 to retrieve reanalysis data for historical dates.
@@ -18,6 +21,7 @@ from typing import Any
 import requests
 
 from ..db import connect
+from ..settings import FOCUS_CITY_IDS
 from ..utils.ids import new_id
 from .open_meteo import build_threshold_distribution
 
@@ -56,6 +60,7 @@ def backfill_historical_forecasts(
     *,
     db_path: str | Path | None = None,
     sigma_f: float = 3.0,
+    city_ids: list[str] | tuple[str, ...] | None = None,
 ) -> int:
     """Fetch historical weather for all contract cities/dates and load forecasts.
 
@@ -65,10 +70,20 @@ def backfill_historical_forecasts(
 
     Returns the total number of forecast snapshots inserted.
     """
+    selected_city_ids = tuple(city_id.lower() for city_id in (city_ids or FOCUS_CITY_IDS) if city_id)
+
     con = connect(db_path=db_path)
     try:
         # Get cities with their date ranges and coordinates
-        cities = con.execute('''
+        city_filter_sql = ''
+        city_params: list[str] = []
+        if selected_city_ids:
+            placeholders = ', '.join(['?'] * len(selected_city_ids))
+            city_filter_sql = f' AND c.city_id IN ({placeholders})'
+            city_params = list(selected_city_ids)
+
+        cities = con.execute(
+            f'''
             SELECT
                 c.city_id, ci.lat, ci.lon, ci.timezone_name,
                 min(c.market_date_local) AS start_date,
@@ -77,21 +92,28 @@ def backfill_historical_forecasts(
             JOIN core.cities ci ON ci.city_id = c.city_id
             WHERE c.parse_status = 'parsed'
               AND c.market_date_local IS NOT NULL
+              {city_filter_sql}
             GROUP BY c.city_id, ci.lat, ci.lon, ci.timezone_name
             ORDER BY c.city_id
-        ''').fetchall()
+            ''',
+            city_params,
+        ).fetchall()
 
         # Get all contract thresholds grouped by city + date.
         # For 'between' contracts, also include threshold_high_f + 1 so we
         # can compute bracket probability = P(>=low) - P(>=high+1).
-        thresholds_raw = con.execute('''
+        thresholds_raw = con.execute(
+            f'''
             SELECT city_id, market_date_local, threshold_low_f, threshold_high_f, operator
             FROM core.weather_contracts
             WHERE parse_status = 'parsed'
               AND threshold_low_f IS NOT NULL
               AND city_id IS NOT NULL
               AND market_date_local IS NOT NULL
-        ''').fetchall()
+              {city_filter_sql.replace('c.city_id', 'city_id')}
+            ''',
+            city_params,
+        ).fetchall()
 
         # Build lookup: (city_id, date) → set of thresholds
         thresholds_by_city_date: dict[tuple[str, date], set[float]] = {}
@@ -104,6 +126,9 @@ def backfill_historical_forecasts(
                 thresholds_by_city_date[key].add(float(threshold_high) + 1.0)
 
         total_inserted = 0
+
+        if selected_city_ids:
+            logger.info('Historical forecast backfill restricted to cities: %s', ', '.join(selected_city_ids))
 
         for city_id, lat, lon, tz, start_date, end_date in cities:
             logger.info(

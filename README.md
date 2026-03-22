@@ -49,6 +49,23 @@ The repo now includes:
 4. Implement settlement truth ingestion
 5. Build the first contract × timestamp training rows from real data
 
+## Focus-City Workflow
+For the honest historical pipeline, do not assume every city is equally ready.
+
+Recommended first focus:
+- `nyc`
+- `chi`
+
+You can restrict historical forecast backfills with:
+```bash
+WEATHER_FOCUS_CITIES=nyc,chi .venv/bin/python -m weatherlab.ingest.historical_forecasts
+```
+
+Use city-level coverage diagnostics to see which cities currently have:
+- enough contracts/snapshots
+- official settlement coverage
+- live-ish forecast coverage vs archive-only proxy coverage
+
 ## Current Audit Tooling
 - `scripts/run_parser_audit.py <input.csv> [output.json]` will batch-audit market titles
 - `src/weatherlab/build/registry_loader.py` loads city/station registries into DuckDB

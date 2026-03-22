@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / 'data'
 CONFIG_DIR = ROOT / 'config'
@@ -12,3 +13,12 @@ WAREHOUSE_DIR = WAREHOUSE_PATH.parent
 
 OPEN_METEO_BASE_URL = os.environ.get('OPEN_METEO_BASE_URL', 'https://api.open-meteo.com')
 NWS_API_BASE_URL = os.environ.get('NWS_API_BASE_URL', 'https://api.weather.gov')
+
+
+def _parse_focus_city_ids(raw: str | None) -> tuple[str, ...]:
+    if not raw:
+        return ()
+    return tuple(part.strip().lower() for part in raw.split(',') if part.strip())
+
+
+FOCUS_CITY_IDS = _parse_focus_city_ids(os.environ.get('WEATHER_FOCUS_CITIES'))

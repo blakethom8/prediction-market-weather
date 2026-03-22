@@ -53,3 +53,14 @@ Make the MVP testing environment more honest by strengthening:
 - settlement truth
 - source-backed replay
 - tests and fixtures around both
+- focus-city historical pipeline maturity (start with NYC + Chicago)
+
+## Current Architectural Priority
+
+The biggest remaining honesty gap is **"available data at the time"**.
+
+That means:
+- do not treat archive/reanalysis data as if it were a real historical forecast issuance
+- use archive sources as proxy layers only
+- build the first serious historical pipeline for a small number of cities before scaling out
+- prefer explicit city-readiness diagnostics over vague confidence
