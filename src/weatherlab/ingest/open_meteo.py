@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -42,7 +42,7 @@ def parse_open_meteo_daily_payload(*, payload: dict, city_id: str, target_date_l
     pred_low_temp = float(lows[idx]) if idx < len(lows) and lows[idx] is not None else None
     pred_precip_prob = float(precip_probs[idx]) / 100 if idx < len(precip_probs) and precip_probs[idx] is not None else None
 
-    available_at = fetched_at_utc or datetime.now(UTC)
+    available_at = fetched_at_utc or datetime.now(timezone.utc)
     distribution = {}
     if pred_high_temp is not None:
         distribution = build_threshold_distribution(

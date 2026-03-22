@@ -22,5 +22,8 @@ extract-kalshi:
 promote:
 	PYTHONPATH=src $(PYTHON) -m weatherlab.build.promote
 
+backfill-forecasts:
+	PYTHONPATH=src $(PYTHON) -m weatherlab.ingest.historical_forecasts
+
 run-eval:
 	PYTHONPATH=src $(PYTHON) eval.py
