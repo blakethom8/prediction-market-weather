@@ -19,6 +19,7 @@ create table if not exists features.contract_training_rows (
     sibling_count integer,
     sibling_entropy double,
     latest_forecast_snapshot_id varchar,
+    settlement_source varchar,
     y_resolve_yes integer,
     primary key (market_ticker, ts_utc)
 );

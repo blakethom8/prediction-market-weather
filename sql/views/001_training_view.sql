@@ -1,5 +1,30 @@
 create or replace view features.v_training_rows as
-with base as (
+with ranked_settlements as (
+    select
+        s.*,
+        case
+            when s.source = 'nws-cli' then 1
+            when s.source = 'kalshi-implied' then 2
+            else 99
+        end as source_priority,
+        row_number() over (
+            partition by s.station_id, s.market_date_local
+            order by
+                case
+                    when s.source = 'nws-cli' then 1
+                    when s.source = 'kalshi-implied' then 2
+                    else 99
+                end,
+                s.report_published_at_utc desc nulls last,
+                s.settlement_id
+        ) as rn
+    from core.settlement_observations s
+    where s.is_final = true
+), selected_settlements as (
+    select *
+    from ranked_settlements
+    where rn = 1
+), base as (
     select
         c.market_ticker,
         c.event_ticker,
@@ -30,6 +55,7 @@ with base as (
         fd_low.prob_ge_threshold as prob_ge_low,
         -- P(temp >= threshold_high + 1) for bracket probability
         fd_high.prob_ge_threshold as prob_ge_high,
+        s.source as settlement_source,
         case
             when s.observed_high_temp_f is null then null
             when c.operator = 'between'
@@ -53,10 +79,9 @@ with base as (
     left join core.forecast_distributions fd_high
       on fd_high.forecast_snapshot_id = f.forecast_snapshot_id
      and fd_high.threshold_f = c.threshold_high_f + 1
-    left join core.settlement_observations s
+    left join selected_settlements s
       on s.station_id = c.station_id
      and s.market_date_local = c.market_date_local
-     and s.is_final = true
     qualify row_number() over (
         partition by c.market_ticker, m.ts_utc
         order by f.available_at_utc desc nulls last
@@ -74,6 +99,7 @@ select
     last_price,
     minutes_to_close,
     latest_forecast_snapshot_id,
+    settlement_source,
     -- Fair probability: bracket prob for 'between', P(>=threshold) for >=, 1-P(>=threshold) for <=
     case
         when operator = 'between' and prob_ge_low is not null and prob_ge_high is not null
