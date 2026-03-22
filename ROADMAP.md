@@ -59,7 +59,13 @@ Make the MVP testing environment more honest by strengthening:
 
 ## Current Architectural Priority
 
-The biggest remaining honesty gap is **"available data at the time"**.
+The immediate product priority is now the **point-in-time betting architecture**:
+- compare the full daily board before selecting a bet
+- capture rationale, forecast context, and abstentions
+- settle outcomes and review paper performance
+- improve daily edge selection through iteration
+
+The biggest remaining honesty gap for research is still **"available data at the time"**.
 
 That means:
 - do not treat archive/reanalysis data as if it were a real historical forecast issuance

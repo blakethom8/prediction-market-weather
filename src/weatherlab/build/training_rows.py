@@ -16,7 +16,7 @@ def materialize_training_rows(db_path: str | Path | None = None) -> int:
                 price_yes_mid, price_yes_ask, price_yes_bid,
                 fair_prob, edge_vs_mid, edge_vs_ask,
                 minutes_to_close, sibling_rank, sibling_count, sibling_entropy,
-                latest_forecast_snapshot_id, y_resolve_yes
+                latest_forecast_snapshot_id, settlement_source, y_resolve_yes
             )
             select
                 market_ticker, ts_utc, city_id, market_date_local,
@@ -27,6 +27,7 @@ def materialize_training_rows(db_path: str | Path | None = None) -> int:
                 null as sibling_count,
                 null as sibling_entropy,
                 latest_forecast_snapshot_id,
+                settlement_source,
                 y_resolve_yes
             from features.v_training_rows
             '''

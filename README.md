@@ -79,6 +79,19 @@ Run the backfill with:
 PYTHONPATH=src .venv/bin/python -c "from weatherlab.ingest.archived_nws_forecasts import backfill_archived_nws_zone_forecasts; print(backfill_archived_nws_zone_forecasts())"
 ```
 
+## Live / Paper Betting Architecture
+The project is now also centered around a day-of operating loop:
+- create a strategy session
+- compare the full daily market board across cities
+- record paper bets with rationale
+- settle and review outcomes
+
+Key tables/views:
+- `ops.strategy_sessions`
+- `ops.strategy_market_board`
+- `ops.paper_bets`
+- `features.v_daily_market_board`
+
 Use city-level coverage diagnostics to see which cities currently have:
 - enough contracts/snapshots
 - official settlement coverage

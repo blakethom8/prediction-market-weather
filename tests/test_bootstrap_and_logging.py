@@ -32,6 +32,8 @@ class BootstrapAndLoggingTests(unittest.TestCase):
         self.assertIn("core.weather_contracts", tables)
         self.assertIn("core.forecast_snapshots", tables)
         self.assertIn("ops.decision_journal", tables)
+        self.assertIn("ops.strategy_sessions", tables)
+        self.assertIn("ops.paper_bets", tables)
 
     def test_decision_logger_writes_row(self):
         rationale = build_rationale(

@@ -13,7 +13,7 @@ def replay_decision_for_market(*, market_ticker: str, signal_version: str = 'bas
     try:
         row = con.execute(
             '''
-            select market_ticker, fair_prob, price_yes_mid, price_yes_ask, price_yes_bid, minutes_to_close
+            select market_ticker, city_id, latest_forecast_snapshot_id, fair_prob, price_yes_mid, price_yes_ask, price_yes_bid, minutes_to_close
             from features.contract_training_rows
             where market_ticker = ?
             order by ts_utc desc
@@ -27,7 +27,7 @@ def replay_decision_for_market(*, market_ticker: str, signal_version: str = 'bas
     if row is None:
         raise ValueError(f'No training row found for market {market_ticker}')
 
-    market_ticker, fair_prob, market_mid, yes_ask, yes_bid, minutes_to_close = row
+    market_ticker, city_id, forecast_snapshot_id, fair_prob, market_mid, yes_ask, yes_bid, minutes_to_close = row
     edge_vs_mid = fair_prob - market_mid if fair_prob is not None and market_mid is not None else None
     edge_vs_ask = fair_prob - yes_ask if fair_prob is not None and yes_ask is not None else None
     action = choose_action(fair_prob=fair_prob, tradable_yes_ask=yes_ask, min_edge=min_edge)
@@ -38,6 +38,9 @@ def replay_decision_for_market(*, market_ticker: str, signal_version: str = 'bas
         tradable_yes_ask=yes_ask,
         edge_vs_ask=edge_vs_ask,
         minutes_to_close=minutes_to_close,
+        city_id=city_id,
+        forecast_source='training-row',
+        strategy_context={'mode': 'single_market_replay', 'forecast_snapshot_id': forecast_snapshot_id},
     )
     rationale['gate_summary'] = {
         'has_fair_prob': fair_prob is not None,

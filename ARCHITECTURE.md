@@ -2,13 +2,14 @@
 
 ## Core Principle
 
-**Forecast first, bid second.**
+**Compare the full board first. Forecast first, bid second.**
 
-The system has three layers:
+The system now has four practical layers:
 
 1. **Reality layer** — estimate the real-world weather distribution
 2. **Market layer** — observe Kalshi prices, spreads, and sibling-bucket structure
-3. **Decision layer** — only place bets when edge survives execution constraints
+3. **Strategy layer** — compare all available bets for the day before isolating one contract
+4. **Decision layer** — only place bets when edge survives execution constraints
 
 ## Canonical Grain
 
@@ -87,6 +88,18 @@ We should support three target families:
 3. **Price-movement target**
    - Did the market reprice over the next horizon?
 
+## Live Betting / Paper Betting Loop
+
+The immediate operating model is:
+
+1. create a **strategy session** for the day
+2. populate a **market board** across the available cities/contracts
+3. compare candidate bets across the board
+4. record a **paper bet** only after the day-level strategy is clear
+5. capture the outcome and retrospective review
+
+This creates a simulation environment that behaves like live deployment even before real execution is turned on.
+
 ## Auditability Requirement
 
 Every bet must be explainable after the fact.
@@ -95,6 +108,7 @@ That means storing:
 - exact inputs seen at decision time
 - exact forecast snapshot used
 - exact market snapshot used
+- board-level context (how it compared to the other available bets)
 - feature summary
 - model version / signal version
 - rationale text or JSON
