@@ -83,6 +83,7 @@ PYTHONPATH=src .venv/bin/python -c "from weatherlab.ingest.archived_nws_forecast
 The project is now also centered around a day-of operating loop:
 - create a strategy session
 - compare the full daily market board across cities
+- generate a daily strategy summary
 - record paper bets with rationale
 - settle and review outcomes
 
@@ -91,6 +92,14 @@ Key tables/views:
 - `ops.strategy_market_board`
 - `ops.paper_bets`
 - `features.v_daily_market_board`
+
+Live workflow code now lives under:
+- `src/weatherlab/live/`
+
+This path should remain structurally separate from the historical research / ML path.
+
+Betting platform system design doc:
+- `docs/BETTING_PLATFORM_ARCHITECTURE.md`
 
 Use city-level coverage diagnostics to see which cities currently have:
 - enough contracts/snapshots

@@ -4,6 +4,15 @@
 
 **Compare the full board first. Forecast first, bid second.**
 
+## Structural Separation
+
+Even if this remains one repository for now, the system should be treated as two different code paths:
+
+- **live betting platform** → day-of board, strategy, approval, paper bets, dashboard/app
+- **research / ML pipeline** → history, backtests, archived forecasts, training rows, calibration
+
+The live betting platform should consume intelligence from research without becoming tangled with research-heavy internals.
+
 The system now has four practical layers:
 
 1. **Reality layer** — estimate the real-world weather distribution

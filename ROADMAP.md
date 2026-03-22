@@ -64,6 +64,7 @@ The immediate product priority is now the **point-in-time betting architecture**
 - capture rationale, forecast context, and abstentions
 - settle outcomes and review paper performance
 - improve daily edge selection through iteration
+- keep live/app code structurally separate from research/ML code even while they share one repo
 
 The biggest remaining honesty gap for research is still **"available data at the time"**.
 
