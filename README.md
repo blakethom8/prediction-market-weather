@@ -56,10 +56,15 @@ Recommended first focus:
 - `nyc`
 - `chi`
 
+These are now the default focus cities unless overridden.
+
 You can restrict historical forecast backfills with:
 ```bash
 WEATHER_FOCUS_CITIES=nyc,chi .venv/bin/python -m weatherlab.ingest.historical_forecasts
 ```
+
+Archive-source planning notes live in:
+- `docs/HISTORICAL_FORECAST_ARCHIVE_PLAN.md`
 
 Use city-level coverage diagnostics to see which cities currently have:
 - enough contracts/snapshots

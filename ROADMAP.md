@@ -54,6 +54,7 @@ Make the MVP testing environment more honest by strengthening:
 - source-backed replay
 - tests and fixtures around both
 - focus-city historical pipeline maturity (start with NYC + Chicago)
+- archived forecast source plan centered on NDFD archive with IEM text fallback
 
 ## Current Architectural Priority
 

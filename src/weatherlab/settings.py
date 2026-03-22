@@ -17,7 +17,7 @@ NWS_API_BASE_URL = os.environ.get('NWS_API_BASE_URL', 'https://api.weather.gov')
 
 def _parse_focus_city_ids(raw: str | None) -> tuple[str, ...]:
     if not raw:
-        return ()
+        return ('nyc', 'chi')
     return tuple(part.strip().lower() for part in raw.split(',') if part.strip())
 
 
