@@ -1,3 +1,5 @@
+"""High-level day-of workflow helpers for the live betting platform."""
+
 from __future__ import annotations
 
 import json
@@ -6,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..db import connect
-from ..ops.strategy import create_strategy_session, populate_strategy_market_board, update_strategy_approval
+from .persistence import create_strategy_session, populate_strategy_market_board, update_strategy_approval
 
 
 DEFAULT_SELECTION_FRAMEWORK = {
@@ -15,6 +17,12 @@ DEFAULT_SELECTION_FRAMEWORK = {
     'review_required': True,
     'compare_full_board_first': True,
 }
+
+DEFAULT_REVIEW_GUIDANCE = (
+    'Compare the full board before approving any single paper bet.',
+    'Approve only bets that still feel strong after cross-city comparison.',
+    'Record abstentions when the board lacks clean edge.',
+)
 
 
 def fetch_strategy_board(*, strategy_id: str, db_path: str | Path | None = None) -> list[dict[str, Any]]:
@@ -140,9 +148,8 @@ def render_daily_strategy_markdown(*, strategy_id: str, strategy_date_local: dat
         lines.append('')
 
     lines.append('## Review Guidance')
-    lines.append('- Compare the full board before approving any single paper bet.')
-    lines.append('- Approve only bets that still feel strong after cross-city comparison.')
-    lines.append('- Record abstentions when the board lacks clean edge.')
+    for guidance in DEFAULT_REVIEW_GUIDANCE:
+        lines.append(f'- {guidance}')
     lines.append('')
     return '\n'.join(lines)
 
@@ -152,6 +159,8 @@ def render_daily_strategy_html(*, strategy_id: str, strategy_date_local: date, s
         f"<li><strong>{row['market_ticker']}</strong> ({row['city_id']}) — {row['candidate_bucket']} / rank {row['candidate_rank']} / ask {row['price_yes_ask']} / fair {row['fair_prob']} / edge {row['edge_vs_ask']}</li>"
         for row in summary['top_candidates']
     ) or '<li>No strong candidates yet; likely a low-conviction day.</li>'
+
+    review_items = ''.join(f'<li>{guidance}</li>' for guidance in DEFAULT_REVIEW_GUIDANCE)
 
     return f"""<!DOCTYPE html>
 <html lang='en'>
@@ -190,11 +199,7 @@ def render_daily_strategy_html(*, strategy_id: str, strategy_date_local: date, s
     </div>
     <div class='card'>
       <h2>Review Guidance</h2>
-      <ul>
-        <li>Compare the full board before approving any single paper bet.</li>
-        <li>Approve only bets that still feel strong after cross-city comparison.</li>
-        <li>Record abstentions when the board lacks clean edge.</li>
-      </ul>
+      <ul>{review_items}</ul>
     </div>
   </div>
 </body>

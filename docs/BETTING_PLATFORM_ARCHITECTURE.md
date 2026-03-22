@@ -190,9 +190,9 @@ After the report-first loop is reliable:
 
 Inside the repository, keep a clean separation:
 
-- `src/weatherlab/live/` → betting platform application logic
-- `src/weatherlab/research/` → historical and ML workflows (future refactor target)
-- `src/weatherlab/shared/` → stable cross-cutting primitives (future refactor target)
+- `src/weatherlab/live/` → betting platform application logic and persistence helpers
+- `src/weatherlab/research/` → research-facing namespace for replay, evaluation, and archive planning
+- `src/weatherlab/ops/` → compatibility layer for legacy live workflow imports
 
 Current practical guidance:
 - new day-of board, reporting, and approval logic should go under `live`

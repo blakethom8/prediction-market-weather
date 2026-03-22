@@ -99,6 +99,11 @@ Live workflow code now lives under:
 
 This path should remain structurally separate from the historical research / ML path.
 
+Current package split:
+- `src/weatherlab/live/` for day-of workflow orchestration and persistence helpers
+- `src/weatherlab/research/` for historical/replay/evaluation entry points
+- `src/weatherlab/ops/` as a compatibility layer for older live workflow imports
+
 Betting platform system design doc:
 - `docs/BETTING_PLATFORM_ARCHITECTURE.md`
 
