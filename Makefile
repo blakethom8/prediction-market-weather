@@ -16,5 +16,11 @@ selftest: test
 checks:
 	@echo "TODO: add SQL/data integrity checks"
 
+extract-kalshi:
+	PYTHONPATH=src $(PYTHON) -m weatherlab.ingest.kalshi_history
+
+promote:
+	PYTHONPATH=src $(PYTHON) -m weatherlab.build.promote
+
 run-eval:
 	PYTHONPATH=src $(PYTHON) eval.py

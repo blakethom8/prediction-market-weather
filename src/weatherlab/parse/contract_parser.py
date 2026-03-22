@@ -107,18 +107,34 @@ def _build_result(
     )
 
 
+def _strip_markdown(text: str) -> str:
+    """Remove markdown bold markers from title text."""
+    return text.replace('**', '')
+
+
+# Number pattern that handles negative values and optional degree symbol.
+_NUM = r'-?\d+(?:\.\d+)?'
+
+
 def parse_temperature_contract(market_ticker: str, title: str) -> ParsedContract:
-    lowered = title.lower()
+    clean = _strip_markdown(title)
+    lowered = clean.lower()
     city_id = _extract_city_id(lowered)
-    market_date_local = _extract_market_date(title)
-    measure = 'daily_high_temp_f' if 'high temp' in lowered or 'high temperature' in lowered else None
+    market_date_local = _extract_market_date(clean)
+    # Match both modern ("high temp in") and early 2021 ("high in") Kalshi titles.
+    _is_high_temp = (
+        'high temp' in lowered
+        or 'high temperature' in lowered
+        or re.search(r'\bhigh in\b', lowered) is not None
+    )
+    measure = 'daily_high_temp_f' if _is_high_temp else None
 
     range_patterns = [
-        re.compile(r'\bbe\s+(\d+(?:\.\d+)?)\s*(?:to|\-|–)\s*(\d+(?:\.\d+)?)\b', re.IGNORECASE),
-        re.compile(r'\bbetween\s+(\d+(?:\.\d+)?)\D+(\d+(?:\.\d+)?)\b', re.IGNORECASE),
+        re.compile(rf'\bbe\s+({_NUM})\s*°?\s*(?:to|\-|–)\s*({_NUM})', re.IGNORECASE),
+        re.compile(rf'\bbetween\s+({_NUM})\D+({_NUM})', re.IGNORECASE),
     ]
     for pattern in range_patterns:
-        match = pattern.search(title)
+        match = pattern.search(clean)
         if match:
             return _build_result(
                 market_ticker=market_ticker,
@@ -132,13 +148,13 @@ def parse_temperature_contract(market_ticker: str, title: str) -> ParsedContract
             )
 
     ge_patterns = [
-        re.compile(r'\b(?:above|over|greater than|at least)\s+(\d+(?:\.\d+)?)\b', re.IGNORECASE),
-        re.compile(r'\b(\d+(?:\.\d+)?)\s*(?:°|degrees?)?\s+or\s+higher\b', re.IGNORECASE),
-        re.compile(r'>\s*(\d+(?:\.\d+)?)'),
-        re.compile(r'\bhit\s+(\d+(?:\.\d+)?)\b', re.IGNORECASE),
+        re.compile(rf'\b(?:above|over|greater than|at least)\s+({_NUM})', re.IGNORECASE),
+        re.compile(rf'({_NUM})\s*(?:°|degrees?)?\s+or\s+(?:higher|above)\b', re.IGNORECASE),
+        re.compile(rf'>\s*({_NUM})\s*°'),
+        re.compile(rf'\bhit\s+({_NUM})', re.IGNORECASE),
     ]
     for pattern in ge_patterns:
-        match = pattern.search(title)
+        match = pattern.search(clean)
         if match:
             return _build_result(
                 market_ticker=market_ticker,
@@ -152,12 +168,12 @@ def parse_temperature_contract(market_ticker: str, title: str) -> ParsedContract
             )
 
     le_patterns = [
-        re.compile(r'\b(?:below|under|less than|at most)\s+(\d+(?:\.\d+)?)\b', re.IGNORECASE),
-        re.compile(r'\b(\d+(?:\.\d+)?)\s*(?:°|degrees?)?\s+or\s+lower\b', re.IGNORECASE),
-        re.compile(r'\b<\s*(\d+(?:\.\d+)?)\b'),
+        re.compile(rf'\b(?:below|under|less than|at most)\s+({_NUM})', re.IGNORECASE),
+        re.compile(rf'({_NUM})\s*(?:°|degrees?)?\s+or\s+(?:lower|below)\b', re.IGNORECASE),
+        re.compile(rf'<\s*({_NUM})\s*°'),
     ]
     for pattern in le_patterns:
-        match = pattern.search(title)
+        match = pattern.search(clean)
         if match:
             return _build_result(
                 market_ticker=market_ticker,
