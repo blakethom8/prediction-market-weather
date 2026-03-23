@@ -701,7 +701,7 @@ pre {
   }
 
   .site-nav a {
-    flex: 1 1 calc(33.33% - 0.5rem);
+    flex: 1 1 calc(50% - 0.5rem);
     justify-content: center;
   }
 

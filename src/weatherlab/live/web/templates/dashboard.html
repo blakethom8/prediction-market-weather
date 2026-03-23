@@ -36,6 +36,7 @@
     <a class="button button-primary" href="{{ request.url_for('strategy_detail', strategy_id=session.strategy_id) }}">Open active strategy</a>
     <a class="button" href="{{ request.url_for('board_by_date', strategy_date=session.strategy_date_local) }}?strategy_id={{ session.strategy_id }}">Open full board</a>
     <a class="button" href="{{ request.url_for('paper_bets_page') }}?strategy_id={{ session.strategy_id }}">Paper review</a>
+    <a class="button" href="{{ request.url_for('history_page') }}">Historical review</a>
     {% else %}
     <code class="inline-callout">make daily-board -- --date {{ today }} --thesis "Scan the full board, then approve only the clearest weather edge."</code>
     {% endif %}
@@ -89,6 +90,17 @@
     <strong class="metric-value">{{ metrics.total_strategy_sessions }}</strong>
     <p>{{ metrics.pending_strategy_reviews }} strategy reviews and {{ metrics.pending_proposals }} proposals are pending overall.</p>
   </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Historical review</p>
+      <h2>Keep learning separate from today's queue</h2>
+    </div>
+    <a href="{{ request.url_for('history_page') }}">Open history</a>
+  </div>
+  <p class="panel-copy">Use the history page for settled paper-bet P&amp;L, grouped strategy patterns, review follow-through, and recurring lessons. Keep this page focused on what still needs action today.</p>
 </section>
 
 {% if today_focus.today_sessions %}

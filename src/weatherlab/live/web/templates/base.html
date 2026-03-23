@@ -12,11 +12,12 @@
   <header class="site-header">
     <div class="header-brand">
       <a class="brand" href="{{ request.url_for('dashboard') }}">Prediction Market Weather</a>
-      <p class="brand-subtitle">Local operator console for today's board, recommendations, approvals, and paper-bet lessons.</p>
+      <p class="brand-subtitle">Local operator console for today's board, recommendations, approvals, and the historical learning loop behind tomorrow's strategy.</p>
     </div>
     <nav class="site-nav">
       <a href="{{ request.url_for('today_page') }}" class="{% if nav == 'today' %}is-active{% endif %}">Today</a>
       <a href="{{ request.url_for('latest_board') }}" class="{% if nav == 'board' %}is-active{% endif %}">Board</a>
+      <a href="{{ request.url_for('history_page') }}" class="{% if nav == 'history' %}is-active{% endif %}">History</a>
       <a href="{{ request.url_for('paper_bets_page') }}" class="{% if nav == 'paper-bets' %}is-active{% endif %}">Paper Bets</a>
     </nav>
     <div class="header-status">

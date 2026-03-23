@@ -15,6 +15,7 @@ from ...build.bootstrap import bootstrap
 from ...db import connect
 from ..queries import (
     get_dashboard_snapshot,
+    get_history_snapshot,
     get_latest_strategy_id,
     get_strategy_detail,
     get_today_snapshot,
@@ -72,6 +73,12 @@ def _format_money(value: float | None) -> str:
     if value is None:
         return 'n/a'
     return f'${value:,.2f}'
+
+
+def _format_percent(value: float | None) -> str:
+    if value is None:
+        return 'n/a'
+    return f'{value * 100:.0f}%'
 
 
 def _status_label(value: str | None) -> str:
@@ -152,6 +159,7 @@ templates.env.filters['probability_display'] = _format_probability
 templates.env.filters['cents_display'] = _format_cents
 templates.env.filters['edge_display'] = _format_edge
 templates.env.filters['money_display'] = _format_money
+templates.env.filters['percent_display'] = _format_percent
 templates.env.filters['status_label'] = _status_label
 templates.env.filters['status_tone'] = _status_tone
 templates.env.filters['short_text'] = _short_text
@@ -168,6 +176,9 @@ def _assert_live_schema_ready(*, db_path: str | Path | None = None) -> None:
             ('ops', 'paper_bets', 'BASE TABLE'),
             ('features', 'v_daily_market_board', 'VIEW'),
             ('ops', 'v_strategy_proposal_outcomes', 'VIEW'),
+            ('ops', 'v_strategy_board_learning_history', 'VIEW'),
+            ('ops', 'v_paper_bet_history', 'VIEW'),
+            ('ops', 'v_strategy_session_learning', 'VIEW'),
         }
         rows = con.execute(
             '''
@@ -179,7 +190,10 @@ def _assert_live_schema_ready(*, db_path: str | Path | None = None) -> None:
                 ('ops', 'bet_proposals'),
                 ('ops', 'paper_bets'),
                 ('features', 'v_daily_market_board'),
-                ('ops', 'v_strategy_proposal_outcomes')
+                ('ops', 'v_strategy_proposal_outcomes'),
+                ('ops', 'v_strategy_board_learning_history'),
+                ('ops', 'v_paper_bet_history'),
+                ('ops', 'v_strategy_session_learning')
             )
             '''
         ).fetchall()
@@ -352,6 +366,17 @@ def create_app(*, db_path: str | Path | None = None) -> FastAPI:
                     closed_bets=closed_bets,
                 ),
             },
+        )
+
+    @app.get('/history', response_class=HTMLResponse, name='history_page')
+    def history_page(request: Request) -> HTMLResponse:
+        history = get_history_snapshot(db_path=request.app.state.db_path)
+        return render(
+            request,
+            template_name='history.html',
+            page_title='History',
+            nav='history',
+            context={'history': history},
         )
 
     @app.get('/healthz', response_class=JSONResponse, name='healthz')

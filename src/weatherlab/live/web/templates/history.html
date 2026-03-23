@@ -1,0 +1,737 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set metrics = history.metrics %}
+
+<section class="hero-panel">
+  <div>
+    <p class="eyebrow">Historical learning</p>
+    {% if history.has_closed_history %}
+    <h1>Performance review and strategy learning</h1>
+    <p class="hero-copy">Use this page to review settled paper-bet results, grouped strategy patterns, approval follow-through, and the lessons that should tighten tomorrow's board review.</p>
+    <div class="chip-row">
+      <span class="chip">{{ metrics.strategy_session_count }} sessions</span>
+      <span class="chip">{{ metrics.closed_paper_bet_count }} closed bets</span>
+      <span class="chip">{{ metrics.cumulative_realized_pnl|money_display }} realized</span>
+      <span class="chip">{{ metrics.win_rate|percent_display }} win rate</span>
+    </div>
+    {% elif history.has_history %}
+    <h1>Historical tracking is on, but the settled sample is still thin</h1>
+    <p class="hero-copy">The operator workflow is now storing review and follow-through history. Once more paper bets settle, this page becomes the main place to judge whether the process is actually improving.</p>
+    <div class="chip-row">
+      <span class="chip">{{ metrics.strategy_session_count }} sessions</span>
+      <span class="chip">{{ metrics.paper_bet_count }} paper bets</span>
+      <span class="chip">{{ metrics.open_paper_bet_count }} open</span>
+    </div>
+    {% else %}
+    <h1>Historical review will build as sessions and paper bets accumulate</h1>
+    <p class="hero-copy">Keep the current day on the today page. This page becomes the memory layer once strategy sessions, proposal reviews, and paper bets are stored.</p>
+    {% endif %}
+  </div>
+  <div class="hero-actions">
+    <a class="button button-primary" href="{{ request.url_for('today_page') }}">Open today</a>
+    <a class="button" href="{{ request.url_for('paper_bets_page') }}">Paper bet log</a>
+  </div>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card">
+    <span class="metric-label">Tracked sessions</span>
+    <strong class="metric-value">{{ metrics.strategy_session_count }}</strong>
+    <p>Historical strategy sessions available for review.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Closed paper bets</span>
+    <strong class="metric-value">{{ metrics.closed_paper_bet_count }}</strong>
+    <p>Settled bets currently feeding the learning loop.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Cumulative realized P&amp;L</span>
+    <strong class="metric-value">{{ metrics.cumulative_realized_pnl|money_display }}</strong>
+    <p>Total realized paper performance across closed bets.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Win rate</span>
+    <strong class="metric-value">{{ metrics.win_rate|percent_display }}</strong>
+    <p>Share of closed paper bets finishing positive.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Average closed edge</span>
+    <strong class="metric-value">{{ metrics.avg_closed_expected_edge|edge_display }}</strong>
+    <p>Stored expected edge on the settled sample.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Average realized per bet</span>
+    <strong class="metric-value">{{ metrics.avg_closed_realized_pnl|money_display }}</strong>
+    <p>Mean realized result per closed paper bet.</p>
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel panel-accent">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Recommendation quality</p>
+        <h2>What the sample says</h2>
+      </div>
+    </div>
+    {% if history.recommendation_quality.cues %}
+    <div class="queue-list">
+      {% for cue in history.recommendation_quality.cues %}
+      <article class="queue-item">
+        <div class="queue-topline">
+          <span class="badge badge-{{ cue.tone }}">Signal</span>
+          <strong>{{ cue.headline }}</strong>
+        </div>
+        <p class="detail-copy">{{ cue.note }}</p>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-copy">No quality cues yet. The page needs stored sessions or settled paper bets before recommendation quality is readable.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Lessons</p>
+        <h2>Latest lessons and review themes</h2>
+      </div>
+    </div>
+    {% if history.learning_review.latest_lessons %}
+    <div class="mini-list">
+      {% for row in history.learning_review.latest_lessons %}
+      <article class="mini-list-item">
+        <div>
+          <strong>{{ row.market_ticker }}</strong>
+          <p>{{ row.lesson_summary }}</p>
+        </div>
+        <div class="mini-list-meta">
+          <span>{{ row.closed_at_utc|datetime_display }}</span>
+          <span>{{ row.realized_pnl|money_display }}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-copy">No settled lessons recorded yet.</p>
+    {% endif %}
+    <div class="detail-block">
+      <span class="detail-label">Recurring themes</span>
+      {% if history.learning_review.recurring_lessons %}
+      <div class="mini-list">
+        {% for theme in history.learning_review.recurring_lessons %}
+        <article class="mini-list-item">
+          <div>
+            <strong>{{ theme.theme }}</strong>
+            <p>Repeated {{ theme.count }} times across lessons or review notes.</p>
+          </div>
+          <div class="mini-list-meta">
+            <span>{{ theme.last_seen_at|datetime_display }}</span>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-copy">No recurring lessons or review themes are derivable yet.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Timeline</p>
+      <h2>Closed paper performance by day</h2>
+    </div>
+  </div>
+  {% if history.timeline.daily %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Day</th>
+          <th>Closed bets</th>
+          <th>Win rate</th>
+          <th>Average edge</th>
+          <th>Day P&amp;L</th>
+          <th>Cumulative P&amp;L</th>
+          <th>Cumulative closed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in history.timeline.daily %}
+        <tr>
+          <td data-label="Day"><strong>{{ row.period_label }}</strong></td>
+          <td data-label="Closed bets">{{ row.closed_count }}</td>
+          <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+          <td data-label="Average edge">{{ row.avg_expected_edge|edge_display }}</td>
+          <td data-label="Day P&amp;L">{{ row.realized_pnl|money_display }}</td>
+          <td data-label="Cumulative P&amp;L">{{ row.cumulative_pnl|money_display }}</td>
+          <td data-label="Cumulative closed">{{ row.cumulative_closed_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No closed paper bets yet, so there is no daily performance timeline to review.</p>
+  {% endif %}
+</section>
+
+{% if history.timeline.weekly %}
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Weekly rhythm</p>
+      <h2>Performance by week</h2>
+    </div>
+  </div>
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Week</th>
+          <th>Closed bets</th>
+          <th>Win rate</th>
+          <th>Average edge</th>
+          <th>Week P&amp;L</th>
+          <th>Cumulative P&amp;L</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in history.timeline.weekly %}
+        <tr>
+          <td data-label="Week"><strong>{{ row.period_label }}</strong></td>
+          <td data-label="Closed bets">{{ row.closed_count }}</td>
+          <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+          <td data-label="Average edge">{{ row.avg_expected_edge|edge_display }}</td>
+          <td data-label="Week P&amp;L">{{ row.realized_pnl|money_display }}</td>
+          <td data-label="Cumulative P&amp;L">{{ row.cumulative_pnl|money_display }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Strategy sessions</p>
+      <h2>Recent strategy outcomes</h2>
+    </div>
+  </div>
+  {% if history.recent_sessions %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Strategy</th>
+          <th>Approval</th>
+          <th>Flow</th>
+          <th>Closed results</th>
+          <th>Latest lesson</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in history.recent_sessions %}
+        <tr>
+          <td data-label="Date">
+            <strong>{{ row.strategy_date_local }}</strong>
+            <div class="cell-note">{{ row.strategy_variant }} / {{ row.scenario_label }}</div>
+          </td>
+          <td data-label="Strategy"><a href="{{ request.url_for('strategy_detail', strategy_id=row.strategy_id) }}">{{ row.strategy_id }}</a></td>
+          <td data-label="Approval"><span class="badge badge-{{ row.approval_status|status_tone }}">{{ row.approval_status|status_label }}</span></td>
+          <td data-label="Flow">{{ row.proposal_count }} proposals / {{ row.converted_count }} converted / {{ row.open_paper_bets }} open</td>
+          <td data-label="Closed results">{{ row.closed_paper_bets }} closed / {{ row.closed_realized_pnl|money_display }}</td>
+          <td data-label="Latest lesson">{{ row.latest_lesson or row.latest_review_note_summary or 'n/a' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No strategy sessions recorded yet.</p>
+  {% endif %}
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Grouped performance</p>
+        <h2>By strategy ID</h2>
+      </div>
+    </div>
+    {% if history.grouped_performance.strategy_rows %}
+    <div class="table-shell compact">
+      <table>
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>Variant / scenario</th>
+            <th>Closed bets</th>
+            <th>Win rate</th>
+            <th>Realized P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in history.grouped_performance.strategy_rows %}
+          <tr>
+            <td data-label="Strategy"><a href="{{ request.url_for('strategy_detail', strategy_id=row.strategy_id) }}">{{ row.strategy_id }}</a></td>
+            <td data-label="Variant / scenario">{{ row.strategy_variant }} / {{ row.scenario_label }}</td>
+            <td data-label="Closed bets">{{ row.closed_paper_bets }}</td>
+            <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+            <td data-label="Realized P&amp;L">{{ row.closed_realized_pnl|money_display }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-copy">No strategy sessions to summarize yet.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Grouped performance</p>
+        <h2>By strategy variant</h2>
+      </div>
+    </div>
+    {% if history.grouped_performance.variant_rows %}
+    <div class="table-shell compact">
+      <table>
+        <thead>
+          <tr>
+            <th>Variant</th>
+            <th>Board rows</th>
+            <th>Proposals</th>
+            <th>Closed bets</th>
+            <th>Win rate</th>
+            <th>P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in history.grouped_performance.variant_rows %}
+          <tr>
+            <td data-label="Variant"><strong>{{ row.label }}</strong></td>
+            <td data-label="Board rows">{{ row.board_count }}</td>
+            <td data-label="Proposals">{{ row.proposal_count }}</td>
+            <td data-label="Closed bets">{{ row.closed_count }}</td>
+            <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+            <td data-label="P&amp;L">{{ row.realized_pnl|money_display }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-copy">No variant rollups yet.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Grouped performance</p>
+        <h2>By scenario label</h2>
+      </div>
+    </div>
+    {% if history.grouped_performance.scenario_rows %}
+    <div class="table-shell compact">
+      <table>
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Board rows</th>
+            <th>Proposals</th>
+            <th>Closed bets</th>
+            <th>Win rate</th>
+            <th>P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in history.grouped_performance.scenario_rows %}
+          <tr>
+            <td data-label="Scenario"><strong>{{ row.label }}</strong></td>
+            <td data-label="Board rows">{{ row.board_count }}</td>
+            <td data-label="Proposals">{{ row.proposal_count }}</td>
+            <td data-label="Closed bets">{{ row.closed_count }}</td>
+            <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+            <td data-label="P&amp;L">{{ row.realized_pnl|money_display }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-copy">No scenario rollups yet.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Grouped performance</p>
+        <h2>By city</h2>
+      </div>
+    </div>
+    {% if history.grouped_performance.city_rows %}
+    <div class="table-shell compact">
+      <table>
+        <thead>
+          <tr>
+            <th>City</th>
+            <th>Board rows</th>
+            <th>Proposals</th>
+            <th>Closed bets</th>
+            <th>Win rate</th>
+            <th>P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in history.grouped_performance.city_rows %}
+          <tr>
+            <td data-label="City"><strong>{{ row.label }}</strong></td>
+            <td data-label="Board rows">{{ row.board_count }}</td>
+            <td data-label="Proposals">{{ row.proposal_count }}</td>
+            <td data-label="Closed bets">{{ row.closed_count }}</td>
+            <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+            <td data-label="P&amp;L">{{ row.realized_pnl|money_display }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-copy">No city rollups yet.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Workflow quality</p>
+        <h2>Priority versus watch</h2>
+      </div>
+    </div>
+    {% if history.grouped_performance.candidate_rows %}
+    <div class="table-shell compact">
+      <table>
+        <thead>
+          <tr>
+            <th>Bucket</th>
+            <th>Board rows</th>
+            <th>Proposals</th>
+            <th>Converted</th>
+            <th>Closed bets</th>
+            <th>P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in history.grouped_performance.candidate_rows %}
+          <tr>
+            <td data-label="Bucket"><span class="badge badge-{{ row.group_key|status_tone }}">{{ row.label }}</span></td>
+            <td data-label="Board rows">{{ row.board_count }}</td>
+            <td data-label="Proposals">{{ row.proposal_count }}</td>
+            <td data-label="Converted">{{ row.converted_count }}</td>
+            <td data-label="Closed bets">{{ row.closed_count }}</td>
+            <td data-label="P&amp;L">{{ row.realized_pnl|money_display }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-copy">No candidate-bucket history yet.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Workflow quality</p>
+        <h2>By approval outcome</h2>
+      </div>
+    </div>
+    {% if history.grouped_performance.approval_rows %}
+    <div class="table-shell compact">
+      <table>
+        <thead>
+          <tr>
+            <th>Review outcome</th>
+            <th>Proposals</th>
+            <th>Converted</th>
+            <th>Closed bets</th>
+            <th>Win rate</th>
+            <th>P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in history.grouped_performance.approval_rows %}
+          <tr>
+            <td data-label="Review outcome"><span class="badge badge-{{ row.group_key|status_tone }}">{{ row.label }}</span></td>
+            <td data-label="Proposals">{{ row.proposal_count }}</td>
+            <td data-label="Converted">{{ row.converted_count }}</td>
+            <td data-label="Closed bets">{{ row.closed_count }}</td>
+            <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+            <td data-label="P&amp;L">{{ row.realized_pnl|money_display }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-copy">No proposal review outcomes are recorded yet.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Market context</p>
+        <h2>By time to close</h2>
+      </div>
+    </div>
+    {% if history.grouped_performance.time_bucket_rows %}
+    <div class="table-shell compact">
+      <table>
+        <thead>
+          <tr>
+            <th>Close bucket</th>
+            <th>Board rows</th>
+            <th>Proposals</th>
+            <th>Closed bets</th>
+            <th>Win rate</th>
+            <th>P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in history.grouped_performance.time_bucket_rows %}
+          <tr>
+            <td data-label="Close bucket"><strong>{{ row.label }}</strong></td>
+            <td data-label="Board rows">{{ row.board_count }}</td>
+            <td data-label="Proposals">{{ row.proposal_count }}</td>
+            <td data-label="Closed bets">{{ row.closed_count }}</td>
+            <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+            <td data-label="P&amp;L">{{ row.realized_pnl|money_display }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-copy">No time-to-close rollups are available yet.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Edge and threshold</p>
+        <h2>Settled threshold and edge bands</h2>
+      </div>
+    </div>
+    {% if history.recommendation_quality.threshold_rows or history.recommendation_quality.edge_band_rows %}
+    <div class="detail-block">
+      <span class="detail-label">Threshold bands</span>
+      {% if history.recommendation_quality.threshold_rows %}
+      <div class="table-shell compact">
+        <table>
+          <thead>
+            <tr>
+              <th>Band</th>
+              <th>Settled bets</th>
+              <th>Win rate</th>
+              <th>P&amp;L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in history.recommendation_quality.threshold_rows %}
+            <tr>
+              <td data-label="Band"><strong>{{ row.label }}</strong></td>
+              <td data-label="Settled bets">{{ row.bet_count }}</td>
+              <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+              <td data-label="P&amp;L">{{ row.realized_pnl|money_display }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty-copy">No threshold metadata is available on settled bets yet.</p>
+      {% endif %}
+    </div>
+    <div class="detail-block">
+      <span class="detail-label">Expected edge bands</span>
+      {% if history.recommendation_quality.edge_band_rows %}
+      <div class="table-shell compact">
+        <table>
+          <thead>
+            <tr>
+              <th>Edge band</th>
+              <th>Settled bets</th>
+              <th>Win rate</th>
+              <th>P&amp;L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in history.recommendation_quality.edge_band_rows %}
+            <tr>
+              <td data-label="Edge band"><strong>{{ row.label }}</strong></td>
+              <td data-label="Settled bets">{{ row.bet_count }}</td>
+              <td data-label="Win rate">{{ row.win_rate|percent_display }}</td>
+              <td data-label="P&amp;L">{{ row.realized_pnl|money_display }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty-copy">No expected-edge history is available on settled bets yet.</p>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="empty-copy">Threshold and edge-band comparisons appear after settled bets accumulate.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Outcome review</p>
+        <h2>Biggest wins and misses</h2>
+      </div>
+    </div>
+    <div class="detail-block">
+      <span class="detail-label">Biggest wins</span>
+      {% if history.learning_review.biggest_wins %}
+      <div class="mini-list">
+        {% for row in history.learning_review.biggest_wins %}
+        <article class="mini-list-item">
+          <div>
+            <strong>{{ row.market_ticker }}</strong>
+            <p>{{ row.lesson_summary or row.thesis_at_entry or 'No lesson recorded.' }}</p>
+          </div>
+          <div class="mini-list-meta">
+            <span>{{ row.closed_at_utc|datetime_display }}</span>
+            <span>{{ row.realized_pnl|money_display }}</span>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-copy">No positive settled bets yet.</p>
+      {% endif %}
+    </div>
+    <div class="detail-block">
+      <span class="detail-label">Biggest misses</span>
+      {% if history.learning_review.biggest_misses %}
+      <div class="mini-list">
+        {% for row in history.learning_review.biggest_misses %}
+        <article class="mini-list-item">
+          <div>
+            <strong>{{ row.market_ticker }}</strong>
+            <p>{{ row.lesson_summary or row.thesis_at_entry or 'No lesson recorded.' }}</p>
+          </div>
+          <div class="mini-list-meta">
+            <span>{{ row.closed_at_utc|datetime_display }}</span>
+            <span>{{ row.realized_pnl|money_display }}</span>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-copy">No negative settled bets yet.</p>
+      {% endif %}
+    </div>
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Review follow-through</p>
+        <h2>What changed after review</h2>
+      </div>
+    </div>
+    {% if history.learning_review.review_change_log %}
+    <div class="mini-list">
+      {% for row in history.learning_review.review_change_log %}
+      <article class="mini-list-item">
+        <div>
+          <strong>{{ row.strategy_date_local }} / {{ row.market_ticker }}</strong>
+          <p>{{ row.change_summary }}</p>
+          <p>{{ row.approval_note_summary or 'No explicit review note saved.' }}</p>
+        </div>
+        <div class="mini-list-meta">
+          <span>{{ row.approval_outcome|status_label }}</span>
+          <span>{{ row.city_id }}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-copy">No proposal review follow-through is available yet.</p>
+    {% endif %}
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Recent settled bets</p>
+      <h2>Settled paper bets with context</h2>
+    </div>
+  </div>
+  {% if history.learning_review.recent_settled_bets %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Strategy</th>
+          <th>Context</th>
+          <th>Expected edge</th>
+          <th>Outcome</th>
+          <th>P&amp;L</th>
+          <th>Lesson</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in history.learning_review.recent_settled_bets %}
+        <tr>
+          <td data-label="Market">
+            <strong>{{ row.market_ticker }}</strong>
+            <div class="cell-note">{{ row.market_title or row.city_id }}</div>
+          </td>
+          <td data-label="Strategy"><a href="{{ request.url_for('strategy_detail', strategy_id=row.strategy_id) }}">{{ row.strategy_date_local }}</a></td>
+          <td data-label="Context">{{ row.candidate_bucket|status_label }} / {{ row.approval_outcome|status_label }} / {{ row.strategy_variant }}</td>
+          <td data-label="Expected edge">{{ row.expected_edge|edge_display }}</td>
+          <td data-label="Outcome">{{ row.outcome_label or 'n/a' }}</td>
+          <td data-label="P&amp;L">{{ row.realized_pnl|money_display }}</td>
+          <td data-label="Lesson">{{ row.lesson_summary or 'n/a' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No settled paper bets have been recorded yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

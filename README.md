@@ -97,6 +97,9 @@ Key tables/views:
 - `ops.paper_bets`
 - `ops.paper_bet_reviews`
 - `ops.v_strategy_proposal_outcomes`
+- `ops.v_strategy_board_learning_history`
+- `ops.v_paper_bet_history`
+- `ops.v_strategy_session_learning`
 - `features.v_daily_market_board`
 
 Live workflow code now lives under:
@@ -126,6 +129,7 @@ make live-web
 
 The app is FastAPI with server-rendered Jinja templates. Main routes:
 - `/` dashboard landing page
+- `/history` historical performance / strategy learning review
 - `/board` latest daily board
 - `/board/<YYYY-MM-DD>` board for a specific strategy date
 - `/strategies/<strategy_id>` strategy session summary

@@ -6,6 +6,7 @@ The first betting-platform UI is a local FastAPI app with server-rendered templa
 
 - `/` today-first dashboard for the current day's board, recommendations, watchlist, passes, and proposal state
 - `/today` explicit alias for the same today-focused operator view
+- `/history` for cumulative paper-bet performance, grouped strategy learning, review follow-through, and recurring lessons
 - `/board` for the latest captured daily board
 - `/board/<YYYY-MM-DD>` for a specific strategy date
 - `/strategies/<strategy_id>` for strategy summary, proposals, review history, and linked paper bets
@@ -62,7 +63,7 @@ make live-web
 
 Notes:
 - `make daily-board` creates a strategy session even if the board is empty for that date, so the operator console can still capture the day, approval status, and later review lineage.
-- The app now treats the current day as the main operator surface: start on `/` or `/today`, then drop into `/board` for the full captured strip or `/strategies/<strategy_id>` for deeper lineage.
+- The app now treats the current day as the main operator surface: start on `/` or `/today` for active decisions, then use `/history` for longitudinal learning and `/board` or `/strategies/<strategy_id>` for deeper lineage.
 - Broad board scans remain the default. `research_focus_cities` can still be recorded as confidence anchors, but they should not narrow the live board unless `board_cities` is intentionally set.
 - `/healthz` now checks that the live tables and views required by the app are present, so it catches schema/view drift instead of reporting process-only health.
 - The web app remains intentionally server-rendered and local-first; use Telegram for push summaries and the FastAPI UI for board scanning, strategy review, paper bets, and post-trade review.
