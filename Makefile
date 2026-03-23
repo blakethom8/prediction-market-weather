@@ -33,3 +33,7 @@ daily-board:
 
 live-web:
 	PYTHONPATH=src $(PYTHON) -m weatherlab.live.web --host 0.0.0.0 --port 8000
+
+fetch-live:
+	@echo "Fetching live Kalshi weather markets..."
+	PYTHONPATH=src .venv/bin/python -m weatherlab.ingest.kalshi_live_sync
