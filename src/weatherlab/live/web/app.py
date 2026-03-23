@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from ...build.bootstrap import bootstrap
 from ...db import connect
 from .._shared import sum_numeric as _sum_numeric
+from ..live_orders import fetch_live_orders, fetch_live_positions
 from ..queries import (
     get_dashboard_snapshot,
     get_history_snapshot,
@@ -93,16 +94,24 @@ def _status_tone(value: str | None) -> str:
         'approved': 'good',
         'priority': 'good',
         'closed': 'good',
+        'executed': 'good',
         'YES': 'good',
+        'buy': 'good',
         'pending_review': 'warn',
         'adjustments_requested': 'warn',
         'watch': 'warn',
         'open': 'warn',
+        'pending': 'warn',
+        'resting': 'warn',
+        'sell': 'warn',
         'rejected': 'bad',
         'pass': 'muted',
         'settled': 'muted',
         'converted_to_paper': 'muted',
+        'cancelled': 'muted',
         'unproposed': 'neutral',
+        'yes': 'neutral',
+        'no': 'neutral',
     }
     return mapping.get(value or '', 'neutral')
 
@@ -129,6 +138,8 @@ def _notes_display(value: Any) -> str:
         parts = [str(item) for item in value if item not in (None, '')]
         return '; '.join(parts) if parts else 'n/a'
     return str(value)
+
+
 def _build_paper_summary(
     *,
     strategy_filter: str | None,
@@ -146,6 +157,28 @@ def _build_paper_summary(
         'winning_bets': len(winning_bets),
         'losing_bets': len(losing_bets),
         'latest_lesson': next((row['lesson_summary'] for row in closed_bets if row.get('lesson_summary')), None),
+    }
+
+
+def _build_live_summary(
+    *,
+    strategy_filter: str | None,
+    positions: list[dict[str, Any]],
+    live_orders: list[dict[str, Any]],
+) -> dict[str, Any]:
+    open_positions = [row for row in positions if row.get('outcome_result') in (None, '')]
+    settled_positions = [row for row in positions if row.get('outcome_result') not in (None, '')]
+    return {
+        'strategy_filter': strategy_filter,
+        'total_contracts': _sum_numeric(positions, 'total_contracts'),
+        'total_deployed_dollars': _sum_numeric(positions, 'total_cost_dollars'),
+        'potential_max_payout_dollars': _sum_numeric(positions, 'max_payout_dollars'),
+        'realized_pnl_dollars': _sum_numeric(settled_positions, 'realized_pnl_dollars'),
+        'open_positions': len(open_positions),
+        'settled_positions': len(settled_positions),
+        'order_count': len(live_orders),
+        'resting_orders': len([row for row in live_orders if row.get('status') == 'resting']),
+        'latest_update': next((row.get('updated_at_utc') for row in live_orders if row.get('updated_at_utc')), None),
     }
 
 
@@ -169,7 +202,9 @@ def _assert_live_schema_ready(*, db_path: str | Path | None = None) -> None:
             ('ops', 'strategy_market_board', 'BASE TABLE'),
             ('ops', 'bet_proposals', 'BASE TABLE'),
             ('ops', 'paper_bets', 'BASE TABLE'),
+            ('ops', 'live_orders', 'BASE TABLE'),
             ('features', 'v_daily_market_board', 'VIEW'),
+            ('ops', 'v_live_positions', 'VIEW'),
             ('ops', 'v_strategy_proposal_outcomes', 'VIEW'),
             ('ops', 'v_strategy_board_learning_history', 'VIEW'),
             ('ops', 'v_paper_bet_history', 'VIEW'),
@@ -184,7 +219,9 @@ def _assert_live_schema_ready(*, db_path: str | Path | None = None) -> None:
                 ('ops', 'strategy_market_board'),
                 ('ops', 'bet_proposals'),
                 ('ops', 'paper_bets'),
+                ('ops', 'live_orders'),
                 ('features', 'v_daily_market_board'),
+                ('ops', 'v_live_positions'),
                 ('ops', 'v_strategy_proposal_outcomes'),
                 ('ops', 'v_strategy_board_learning_history'),
                 ('ops', 'v_paper_bet_history'),
@@ -359,6 +396,30 @@ def create_app(*, db_path: str | Path | None = None) -> FastAPI:
                     strategy_filter=strategy_id,
                     open_bets=open_bets,
                     closed_bets=closed_bets,
+                ),
+            },
+        )
+
+    @app.get('/live-orders', response_class=HTMLResponse, name='live_orders_page')
+    def live_orders_page(
+        request: Request,
+        strategy_id: str | None = Query(default=None),
+    ) -> HTMLResponse:
+        positions = fetch_live_positions(db_path=request.app.state.db_path, strategy_id=strategy_id)
+        live_orders = fetch_live_orders(db_path=request.app.state.db_path, strategy_id=strategy_id)
+        return render(
+            request,
+            template_name='live_orders.html',
+            page_title='Live Orders',
+            nav='live-orders',
+            context={
+                'strategy_filter': strategy_id,
+                'positions': positions,
+                'live_orders': live_orders,
+                'live_summary': _build_live_summary(
+                    strategy_filter=strategy_id,
+                    positions=positions,
+                    live_orders=live_orders,
                 ),
             },
         )

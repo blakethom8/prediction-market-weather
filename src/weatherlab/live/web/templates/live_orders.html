@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-panel">
+  <div>
+    <p class="eyebrow">Real-money operations</p>
+    <h1>Live orders and positions</h1>
+    {% if strategy_filter %}
+    <p class="hero-copy">Showing only live Kalshi orders linked to strategy {{ strategy_filter }}. Paper bets remain separate and are still reviewed on the paper-bets page.</p>
+    {% else %}
+    <p class="hero-copy">This is the real-money counterpart to the paper-bet review surface: current holdings, individual order history, and manual settlement tracking for executed Kalshi orders.</p>
+    {% endif %}
+    <div class="chip-row">
+      <span class="chip">{{ live_summary.open_positions }} open position{% if live_summary.open_positions != 1 %}s{% endif %}</span>
+      <span class="chip">{{ live_summary.settled_positions }} settled</span>
+      <span class="chip">{{ live_summary.order_count }} order{% if live_summary.order_count != 1 %}s{% endif %}</span>
+      {% if strategy_filter %}
+      <span class="chip">Filtered strategy</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="hero-actions">
+    <div class="stacked-stat">
+      <span>Deployed capital</span>
+      <strong>{{ live_summary.total_deployed_dollars|money_display }}</strong>
+    </div>
+    <div class="stacked-stat">
+      <span>Potential payout</span>
+      <strong>{{ live_summary.potential_max_payout_dollars|money_display }}</strong>
+    </div>
+  </div>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card">
+    <span class="metric-label">Contracts held</span>
+    <strong class="metric-value">{{ live_summary.total_contracts|int }}</strong>
+    <p>Total filled contracts across current live positions.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Capital deployed</span>
+    <strong class="metric-value">{{ live_summary.total_deployed_dollars|money_display }}</strong>
+    <p>Cash committed at entry prices across all filled live orders.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Max payout</span>
+    <strong class="metric-value">{{ live_summary.potential_max_payout_dollars|money_display }}</strong>
+    <p>Binary contracts pay $1 per filled contract when the held side wins.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Realized P&amp;L</span>
+    <strong class="metric-value">{{ live_summary.realized_pnl_dollars|money_display }}</strong>
+    <p>Realized only after manual settlement is recorded on each live order.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Latest update</span>
+    <strong class="metric-value metric-id">{{ live_summary.latest_update|datetime_display }}</strong>
+    <p>{{ live_summary.resting_orders }} resting order{% if live_summary.resting_orders != 1 %}s{% endif %} still need sync attention.</p>
+  </article>
+</section>
+
+<section class="panel panel-accent">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Settlement cue</p>
+      <h2>March 24, 2026 settlement workflow</h2>
+    </div>
+  </div>
+  <p class="panel-copy">These contracts settle on Tuesday morning, March 24, 2026, from the NWS Climatological Report for the named airport. Record outcomes manually with the settlement helper once the official report is out.</p>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Positions</p>
+      <h2>Aggregated holdings by ticker</h2>
+    </div>
+  </div>
+  {% if positions %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Ticker</th>
+          <th>State</th>
+          <th>Contracts</th>
+          <th>Average price</th>
+          <th>Cost</th>
+          <th>Payout</th>
+          <th>P&amp;L / outcome</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for position in positions %}
+        <tr>
+          <td data-label="Ticker">
+            <strong>{{ position.ticker }}</strong>
+            <div class="cell-note">{{ position.side|status_label }} side / {{ position.order_count }} order{% if position.order_count != 1 %}s{% endif %}</div>
+          </td>
+          <td data-label="State">
+            {% if position.outcome_result %}
+            <span class="badge badge-muted">Settled</span>
+          {% else %}
+            <span class="badge badge-warn">Open</span>
+          {% endif %}
+          </td>
+          <td data-label="Contracts">{{ position.total_contracts|int }}</td>
+          <td data-label="Average price">{{ position.avg_price_cents|round(2) }}c</td>
+          <td data-label="Cost">{{ position.total_cost_dollars|money_display }}</td>
+          <td data-label="Payout">{{ position.max_payout_dollars|money_display }}</td>
+          <td data-label="P&amp;L / outcome">
+            {{ position.realized_pnl_dollars|money_display }}
+            <div class="cell-note">{{ position.outcome_result or 'Awaiting settlement' }}</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No live orders recorded yet. Run `PYTHONPATH=src .venv/bin/python scripts/seed_live_orders.py` to bootstrap tonight's Kalshi fills into DuckDB.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Order log</p>
+      <h2>Individual live orders</h2>
+    </div>
+  </div>
+  {% if live_orders %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Strategy</th>
+          <th>Status</th>
+          <th>Fill details</th>
+          <th>Cash</th>
+          <th>Kalshi order</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in live_orders %}
+        <tr>
+          <td data-label="Market">
+            <strong>{{ order.ticker }}</strong>
+            <div class="cell-note">{{ order.action|status_label }} {{ order.side|status_label }} / {{ order.order_type|status_label }}</div>
+          </td>
+          <td data-label="Strategy">
+            {% if order.strategy_id %}
+            <a href="{{ request.url_for('strategy_detail', strategy_id=order.strategy_id) }}">{{ order.strategy_date_local or order.strategy_id }}</a>
+            {% else %}
+            <span class="cell-note">Unlinked test order</span>
+            {% endif %}
+          </td>
+          <td data-label="Status"><span class="badge badge-{{ order.status|status_tone }}">{{ order.status|status_label }}</span></td>
+          <td data-label="Fill details">
+            {{ order.fill_count }} filled / {{ order.remaining_count }} remaining
+            <div class="cell-note">{{ order.limit_price_cents }}c x {{ order.initial_count or order.fill_count }}</div>
+          </td>
+          <td data-label="Cash">
+            {{ order.taker_cost_dollars|money_display }}
+            <div class="cell-note">Fees {{ order.taker_fees_dollars|money_display }}</div>
+          </td>
+          <td data-label="Kalshi order">
+            <span class="cell-note">{{ order.kalshi_order_id }}</span>
+            <div class="cell-note">Created {{ order.created_at_utc|datetime_display }}</div>
+            <div class="cell-note">Updated {{ order.updated_at_utc|datetime_display }}</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No live orders recorded yet. Seed the initial orders first, then use `make sync-live-orders` to refresh any resting or pending fills.</p>
+  {% endif %}
+</section>
+{% endblock %}

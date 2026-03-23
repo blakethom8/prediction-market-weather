@@ -37,3 +37,7 @@ live-web:
 fetch-live:
 	@echo "Fetching live Kalshi weather markets..."
 	PYTHONPATH=src $(PYTHON) -m weatherlab.ingest.kalshi_live_sync
+
+sync-live-orders:
+	@echo "Syncing live order fill status from Kalshi..."
+	PYTHONPATH=src .venv/bin/python -m weatherlab.live.live_orders sync

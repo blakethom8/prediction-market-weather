@@ -12,6 +12,7 @@ from ..db import connect
 from ._shared import json_loads as _json_loads
 from ._shared import serialize_value as _serialize_value
 from ._shared import sum_numeric as _sum_numeric
+from .live_orders import fetch_live_orders as _fetch_live_orders
 from .persistence import fetch_strategy_proposals
 from .workflow import fetch_strategy_board, summarize_strategy_board
 
@@ -1698,6 +1699,7 @@ def get_strategy_detail(*, strategy_id: str, db_path: str | Path | None = None) 
     board_rows = fetch_strategy_board(strategy_id=strategy_id, db_path=db_path)
     proposal_rows = fetch_strategy_proposals(strategy_id=strategy_id, db_path=db_path)
     paper_bets = list_paper_bets(strategy_id=strategy_id, db_path=db_path)
+    live_orders = _fetch_live_orders(db_path=db_path, strategy_id=strategy_id)
     review_events = list_strategy_review_events(strategy_id=strategy_id, db_path=db_path)
     proposal_outcomes = list_strategy_proposal_outcomes(strategy_id=strategy_id, db_path=db_path)
     proposal_outcomes_by_id = {row['proposal_id']: row for row in proposal_outcomes}
@@ -1744,6 +1746,8 @@ def get_strategy_detail(*, strategy_id: str, db_path: str | Path | None = None) 
     paper_status_counts = Counter(row['status'] or 'unknown' for row in paper_bets)
     open_paper_bets = [row for row in paper_bets if row['status'] == 'open']
     closed_paper_bets = [row for row in paper_bets if row['status'] == 'closed']
+    settled_live_orders = [row for row in live_orders if row.get('status') == 'settled']
+    open_live_orders = [row for row in live_orders if row.get('status') in {'pending', 'resting', 'executed'}]
     board_rows_with_edge = [row for row in board_rows if row.get('edge_vs_ask') is not None]
     board_rows_with_close = [row for row in board_rows if row.get('minutes_to_close') is not None]
     summary['approval_status'] = session['approval_status']
@@ -1765,6 +1769,11 @@ def get_strategy_detail(*, strategy_id: str, db_path: str | Path | None = None) 
     summary['closed_paper_bets'] = paper_status_counts.get('closed', 0)
     summary['open_paper_notional'] = _sum_numeric(open_paper_bets, 'notional_dollars')
     summary['closed_realized_pnl'] = _sum_numeric(closed_paper_bets, 'realized_pnl')
+    summary['live_order_count'] = len(live_orders)
+    summary['open_live_orders'] = len(open_live_orders)
+    summary['settled_live_orders'] = len(settled_live_orders)
+    summary['live_deployed_dollars'] = _sum_numeric(live_orders, 'taker_cost_dollars')
+    summary['live_realized_pnl'] = _sum_numeric(settled_live_orders, 'realized_pnl_dollars')
     summary['latest_review_event'] = review_events[0] if review_events else None
     summary['latest_lesson'] = next(
         (row['lesson_summary'] for row in closed_paper_bets if row.get('lesson_summary')),
@@ -1814,6 +1823,7 @@ def get_strategy_detail(*, strategy_id: str, db_path: str | Path | None = None) 
         'proposal_outcomes': proposal_outcomes,
         'review_events': review_events,
         'paper_bets': paper_bets,
+        'live_orders': live_orders,
     }
 
 

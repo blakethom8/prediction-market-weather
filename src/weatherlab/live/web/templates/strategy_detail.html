@@ -16,6 +16,7 @@
     <span class="badge badge-{{ session.approval_status|status_tone }}">{{ session.approval_status|status_label }}</span>
     <a class="button button-primary" href="{{ request.url_for('board_by_date', strategy_date=session.strategy_date_local) }}?strategy_id={{ session.strategy_id }}">Open board</a>
     <a class="button" href="{{ request.url_for('paper_bets_page') }}?strategy_id={{ session.strategy_id }}">Paper review</a>
+    <a class="button" href="{{ request.url_for('live_orders_page') }}?strategy_id={{ session.strategy_id }}">Live orders</a>
   </div>
 </section>
 
@@ -287,5 +288,51 @@
     <p class="empty-copy">No paper bets linked to this strategy yet.</p>
     {% endif %}
   </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Real money</p>
+      <h2>Live orders linked to this strategy</h2>
+    </div>
+    <a href="{{ request.url_for('live_orders_page') }}?strategy_id={{ session.strategy_id }}">Filtered view</a>
+  </div>
+  {% if live_orders %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Status</th>
+          <th>Entry</th>
+          <th>Fill</th>
+          <th>P&amp;L</th>
+          <th>Kalshi order</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in live_orders %}
+        <tr>
+          <td data-label="Market">
+            <strong>{{ order.ticker }}</strong>
+            <div class="cell-note">{{ order.action|status_label }} {{ order.side|status_label }}</div>
+          </td>
+          <td data-label="Status"><span class="badge badge-{{ order.status|status_tone }}">{{ order.status|status_label }}</span></td>
+          <td data-label="Entry">{{ order.limit_price_cents }}c x {{ order.initial_count or order.fill_count }}</td>
+          <td data-label="Fill">{{ order.fill_count }} filled / {{ order.remaining_count }} remaining</td>
+          <td data-label="P&amp;L">{{ order.realized_pnl_dollars|money_display }}</td>
+          <td data-label="Kalshi order">
+            <span class="cell-note">{{ order.kalshi_order_id }}</span>
+            <div class="cell-note">{{ order.created_at_utc|datetime_display }}</div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No live orders placed under this strategy session.</p>
+  {% endif %}
 </section>
 {% endblock %}
