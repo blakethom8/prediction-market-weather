@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import duckdb
 
-from .settings import WAREHOUSE_DIR, WAREHOUSE_PATH
+from .settings import WAREHOUSE_PATH
 
 
 def connect(read_only: bool = False, db_path: str | Path | None = None) -> duckdb.DuckDBPyConnection:

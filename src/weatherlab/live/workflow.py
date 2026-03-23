@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from ..db import connect
+from ._shared import json_loads as _json_loads
+from ._shared import normalize_city_ids as _normalize_city_ids
 from .persistence import (
     create_strategy_session,
     fetch_strategy_proposals,
@@ -30,14 +32,6 @@ DEFAULT_REVIEW_GUIDANCE = (
     'Treat NYC and Chicago as research-confidence anchors, not live-board limits.',
     'Record approvals, adjustments, rejections, and abstentions explicitly.',
 )
-
-
-def _normalize_city_ids(city_ids: list[str] | tuple[str, ...] | None) -> list[str]:
-    if not city_ids:
-        return []
-    return [city.strip().lower() for city in city_ids if city and city.strip()]
-
-
 def _board_scope_label(board_scope: str) -> str:
     if board_scope == 'city_subset':
         return 'City subset filter'
@@ -181,7 +175,7 @@ def fetch_strategy_board(*, strategy_id: str, db_path: str | Path | None = None)
                 'edge_vs_ask': row[12],
                 'candidate_rank': row[13],
                 'candidate_bucket': row[14],
-                'board_notes': json.loads(row[15]) if row[15] else {},
+                'board_notes': _json_loads(row[15], default={}),
             }
         )
     return results

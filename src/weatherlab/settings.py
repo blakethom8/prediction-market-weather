@@ -25,6 +25,7 @@ def _load_local_env(path: Path) -> None:
 _load_local_env(ROOT / '.env')
 
 _DEFAULT_WAREHOUSE_PATH = DATA_DIR / 'warehouse' / 'weather_markets.duckdb'
+_DEFAULT_KALSHI_API_PRIVATE_KEY_PATH = ROOT / '.kalshi_private_key.pem'
 WAREHOUSE_PATH = Path(os.environ.get('WEATHER_WAREHOUSE_PATH', str(_DEFAULT_WAREHOUSE_PATH))).expanduser()
 WAREHOUSE_DIR = WAREHOUSE_PATH.parent
 
@@ -32,8 +33,8 @@ OPEN_METEO_BASE_URL = os.environ.get('OPEN_METEO_BASE_URL', 'https://api.open-me
 NWS_API_BASE_URL = os.environ.get('NWS_API_BASE_URL', 'https://api.weather.gov')
 KALSHI_API_KEY_ID = os.environ.get('KALSHI_API_KEY_ID', '')
 KALSHI_API_PRIVATE_KEY_PATH = Path(
-    os.environ.get('KALSHI_API_PRIVATE_KEY_PATH', '.kalshi_private_key.pem')
-)
+    os.environ.get('KALSHI_API_PRIVATE_KEY_PATH', str(_DEFAULT_KALSHI_API_PRIVATE_KEY_PATH))
+).expanduser()
 KALSHI_API_BASE_URL = os.environ.get(
     'KALSHI_API_BASE_URL',
     'https://trading-api.kalshi.com/trade-api/v2',

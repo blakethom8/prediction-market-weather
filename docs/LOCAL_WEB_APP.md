@@ -1,75 +1,184 @@
-# Local Live Web App
+# Local Web App
 
-The first betting-platform UI is a local FastAPI app with server-rendered templates.
+The local web app is a FastAPI operator surface for the live betting workflow. It reads from DuckDB and shows the current board, stored strategy sessions, proposal state, paper bets, and historical learning views.
 
-## What It Includes
+The app is read-oriented today. Session creation, proposal generation, approval changes, paper bet conversion, and settlement are still driven by CLI or Python workflow helpers.
 
-- `/` today-first dashboard for the current day's board, recommendations, watchlist, passes, and proposal state
-- `/today` explicit alias for the same today-focused operator view
-- `/history` for cumulative paper-bet performance, grouped strategy learning, review follow-through, and recurring lessons
-- `/board` for the latest captured daily board
-- `/board/<YYYY-MM-DD>` for a specific strategy date
-- `/strategies/<strategy_id>` for strategy summary, proposals, review history, and linked paper bets
-- `/paper-bets` for open and closed paper-bet review
-- `/healthz` for a simple local health check
+## Prerequisites
 
-## Run Locally
+- Python 3.11+
+- `openssl` on `PATH` for Kalshi request signing
+- a Kalshi API key ID
+- the matching RSA private key saved locally
+- optional: Tailscale if you want to reach the app from another device
 
-First install project dependencies:
+## Local Setup
+
+### 1. Create the virtualenv
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+Equivalent helper:
 
 ```bash
 ./scripts/setup_env.sh
 ```
 
-Bootstrap the database if needed:
+### 2. Create `.env`
 
 ```bash
-./scripts/bootstrap_db.sh
+KALSHI_API_KEY_ID=your-key-id
+KALSHI_API_BASE_URL=https://api.elections.kalshi.com/trade-api/v2
+KALSHI_API_PRIVATE_KEY_PATH=.kalshi_private_key.pem
+WEATHER_WAREHOUSE_PATH=data/warehouse/weather_markets.duckdb
 ```
 
-Generate at least one daily strategy package so the pages have real content:
+Notes:
+
+- `.env` is loaded automatically on import
+- `.kalshi_private_key.pem` is gitignored
+- the client signs Kalshi requests with RSA-PSS
+
+### 3. Save the private key
+
+Put the Kalshi private key at the path referenced by `KALSHI_API_PRIVATE_KEY_PATH` and lock down its permissions:
 
 ```bash
-make daily-board -- --date 2026-03-23 --thesis "Scan the full board, then approve only the clearest weather edge."
+chmod 600 .kalshi_private_key.pem
 ```
 
-Start the app:
+### 4. Bootstrap the warehouse
+
+```bash
+make bootstrap
+```
+
+For a brand-new DuckDB file, also load the static registry:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m weatherlab.build.registry_loader
+```
+
+### 5. Fetch live markets
+
+```bash
+make fetch-live
+```
+
+This:
+
+- hits Kalshi's live weather API
+- stores open contract metadata and market snapshots
+- rematerializes `features.contract_training_rows`
+- refreshes `features.v_daily_market_board`
+
+Important:
+
+- `make fetch-live` covers the market side of the board
+- fair values still depend on forecast snapshots already existing in `core.forecast_snapshots`
+
+### 6. Create a strategy run
+
+```bash
+make daily-board -- --date 2026-03-23 --research-cities nyc,chi --strategy-variant baseline --thesis "Scan the full live board before isolating any single contract."
+```
+
+This writes:
+
+- a strategy session
+- the captured board rows for that session
+- proposal rows
+- a JSON, Markdown, and HTML strategy artifact under `artifacts/daily-strategy/`
+
+### 7. Start the web app
 
 ```bash
 make live-web
 ```
 
-That serves on `0.0.0.0:8000` by default. For a direct module run:
+Direct module run:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m weatherlab.live.web --host 0.0.0.0 --port 8000 --reload
 ```
 
-If your DuckDB warehouse lives somewhere else, set:
+Default bind:
+
+- host: `0.0.0.0`
+- port: `8000`
+
+Open:
+
+- `http://127.0.0.1:8000`
+
+Check health:
 
 ```bash
-export WEATHER_WAREHOUSE_PATH=/path/to/weather_markets.duckdb
+curl http://127.0.0.1:8000/healthz
 ```
 
-Recommended fresh-start sequence:
+## Recommended Fresh Start
 
 ```bash
-./scripts/setup_env.sh
-export WEATHER_WAREHOUSE_PATH="$PWD/data/warehouse/weather_markets.duckdb"
+python3 -m venv .venv
+.venv/bin/pip install -e .
+
+cat > .env <<'EOF'
+KALSHI_API_KEY_ID=your-key-id
+KALSHI_API_BASE_URL=https://api.elections.kalshi.com/trade-api/v2
+KALSHI_API_PRIVATE_KEY_PATH=.kalshi_private_key.pem
+WEATHER_WAREHOUSE_PATH=data/warehouse/weather_markets.duckdb
+EOF
+
+chmod 600 .kalshi_private_key.pem
 make bootstrap
-make daily-board -- --date 2026-03-23 --thesis "Scan the full board, then approve only the clearest weather edge."
+PYTHONPATH=src .venv/bin/python -m weatherlab.build.registry_loader
+make fetch-live
+make daily-board -- --date 2026-03-23 --research-cities nyc,chi --strategy-variant baseline --thesis "Scan the full live board before isolating any single contract."
 make live-web
 ```
 
+## Tailscale Access
+
+Because `make live-web` binds to `0.0.0.0`, the app can be reached over your Tailscale network.
+
+Common URLs:
+
+- `http://<tailscale-ip>:8000`
+- `http://<machine-name>.<tailnet>.ts.net:8000` if MagicDNS is enabled
+
 Notes:
-- `make daily-board` creates a strategy session even if the board is empty for that date, so the operator console can still capture the day, approval status, and later review lineage.
-- The app now treats the current day as the main operator surface: start on `/` or `/today` for active decisions, then use `/history` for longitudinal learning and `/board` or `/strategies/<strategy_id>` for deeper lineage.
-- Broad board scans remain the default. `research_focus_cities` can still be recorded as confidence anchors, but they should not narrow the live board unless `board_cities` is intentionally set.
-- `/healthz` now checks that the live tables and views required by the app are present, so it catches schema/view drift instead of reporting process-only health.
-- The web app remains intentionally server-rendered and local-first; use Telegram for push summaries and the FastAPI UI for board scanning, strategy review, paper bets, and post-trade review.
 
-## Local/Tailscale Notes
+- keep the app on the tailnet or local network only
+- there is no built-in app auth yet
+- the app is meant to be a private operator surface, not a public deployment
 
-- Serving on `0.0.0.0` lets the Mac mini expose the app over the Tailscale IP or MagicDNS name.
-- The app is intentionally local-app oriented: no cloud auth, no public deployment assumptions, no API token handling in the UI yet.
-- Telegram remains a better push layer for summaries and alerts; this app is the review and inspection surface.
+## Key Pages
+
+- `/` and `/today`
+  - today's board summary
+  - top recommendations
+  - proposal status and approval state
+  - recent sessions
+  - recent paper bets
+- `/board`
+  - latest stored board scan
+- `/board/{YYYY-MM-DD}`
+  - a specific date's board and any stored runs for that date
+- `/strategies/{strategy_id}`
+  - one strategy session's thesis, board summary, proposals, review history, and linked paper bets
+- `/paper-bets`
+  - open paper exposure plus settled outcomes and lessons
+- `/history`
+  - grouped learning views across strategy IDs, variants, scenarios, cities, approval outcomes, and edge buckets
+- `/healthz`
+  - confirms the live schema and required views are present
+
+## Empty-State Notes
+
+- If `/today` or `/board` is empty, you likely have not run `make fetch-live` yet.
+- If markets show up but fair values are missing, the warehouse likely does not have current forecast snapshots for those contracts.
+- If `/strategies/{strategy_id}` is empty, you likely have not run `make daily-board` for that date yet.

@@ -3,29 +3,17 @@
 from __future__ import annotations
 
 from collections import Counter
-import json
 from datetime import date, timedelta
 from pathlib import Path
 import re
 from typing import Any
 
 from ..db import connect
+from ._shared import json_loads as _json_loads
+from ._shared import serialize_value as _serialize_value
+from ._shared import sum_numeric as _sum_numeric
 from .persistence import fetch_strategy_proposals
 from .workflow import fetch_strategy_board, summarize_strategy_board
-
-
-def _json_loads(payload: Any, *, default: Any) -> Any:
-    if payload in (None, ''):
-        return default
-    if isinstance(payload, str):
-        return json.loads(payload)
-    return payload
-
-
-def _serialize_value(value: Any) -> Any:
-    if hasattr(value, 'isoformat'):
-        return value.isoformat()
-    return value
 
 
 def _fetch_dicts(
@@ -47,10 +35,6 @@ def _fetch_dicts(
                 row[column] = _serialize_value(value)
         rows.append(row)
     return rows
-
-
-def _sum_numeric(rows: list[dict[str, Any]], key: str) -> float:
-    return sum(float(row.get(key) or 0.0) for row in rows)
 
 
 def _mean(values: list[float]) -> float | None:

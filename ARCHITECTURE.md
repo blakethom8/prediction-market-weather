@@ -1,137 +1,257 @@
-# Prediction Market Weather — Architecture
+# Prediction Market Weather Architecture
 
-## Core Principle
+This repo started as a research and backtest project. The primary architecture now is a live, paper-first weather betting platform backed by a DuckDB warehouse and a local FastAPI app.
 
-**Compare the full board first. Forecast first, bid second.**
+Historical research still matters, but it is no longer the main product surface.
 
-## Structural Separation
+## System Shape
 
-Even if this remains one repository for now, the system should be treated as two different code paths:
+```text
+Kalshi weather API
+  -> live market ingest
+  -> DuckDB core market tables
 
-- **live betting platform** → day-of board, strategy, approval, paper bets, dashboard/app
-- **research / ML pipeline** → history, backtests, archived forecasts, training rows, calibration
+Forecast sources
+  -> forecast ingest
+  -> DuckDB core forecast tables
 
-The live betting platform should consume intelligence from research without becoming tangled with research-heavy internals.
+Settlement sources
+  -> settlement ingest
+  -> DuckDB core settlement tables
 
-The system now has four practical layers:
+core tables
+  -> features.v_training_rows
+  -> features.contract_training_rows
+  -> features.v_daily_market_board
 
-1. **Reality layer** — estimate the real-world weather distribution
-2. **Market layer** — observe Kalshi prices, spreads, and sibling-bucket structure
-3. **Strategy layer** — compare all available bets for the day before isolating one contract
-4. **Decision layer** — only place bets when edge survives execution constraints
+daily board
+  -> ops.strategy_sessions
+  -> ops.strategy_market_board
+  -> ops.bet_proposals
+  -> review / approval events
+  -> ops.paper_bets
+  -> settlement reviews
 
-## Canonical Grain
+ops history views
+  -> FastAPI app
+  -> daily artifacts
+  -> historical learning dashboard
+```
 
-The main modeling grain is:
+## DuckDB Layers
 
-- **one row = one contract × one timestamp**
+### `raw`
 
-Each row should capture:
-- contract metadata
-- current market state
-- latest forecast available at that time
-- sibling-strip context
-- derived fair probability
-- execution-aware edge
-- final settlement label
+Landing zone for source payloads.
 
-## Main Entities
+Key tables:
 
-### `contracts`
-Defines recurring market contracts:
-- city
-- weather variable
-- threshold/bucket semantics
-- close/settle times
-- official station mapping
+- `raw.kalshi_markets`
+- `raw.kalshi_market_snapshots`
+- `raw.weather_forecasts`
+- `raw.weather_observations`
+- `raw.weather_settlement_reports`
 
-### `market_snapshots`
-Time-series of:
-- yes/no bid/ask
-- midpoint
-- volume
-- open interest
-- time-to-close
+### `core`
 
-### `forecast_snapshots`
-Time-series of forecast knowledge:
-- forecast source
-- issued time
-- available time
-- target date
-- predicted high/low
-- uncertainty/distribution info
+Normalized warehouse layer used by both research and live workflows.
 
-### `settlement_observations`
-Final truth aligned to official settlement source:
-- station
-- local market date
-- final observed value
-- report timestamp
+Key tables:
 
-### `bet_decisions`
-Auditable decision records:
-- why we considered the bet
-- model fair probability
-- market price
-- threshold for action
-- expected value
-- rationale payload
+- `core.cities`
+- `core.weather_stations`
+- `core.weather_contracts`
+- `core.market_snapshots`
+- `core.forecast_snapshots`
+- `core.forecast_distributions`
+- `core.settlement_observations`
 
-### `bet_outcomes`
-Post-trade review:
-- fill info
-- realized P&L
-- outcome vs expectation
-- regret / missed opportunity
-- review notes
+### `features`
 
-## Modeling Targets
+Point-in-time modeling and board-generation layer.
 
-We should support three target families:
+Key tables and views:
 
-1. **Resolution target**
-   - Did the contract resolve YES?
-2. **Mispricing target**
-   - Was the contract underpriced or overpriced relative to fair probability?
-3. **Price-movement target**
-   - Did the market reprice over the next horizon?
+- `features.v_training_rows`
+- `features.contract_training_rows`
+- `features.v_latest_market_training_rows`
+- `features.v_daily_market_board`
 
-## Live Betting / Paper Betting Loop
+`features.v_daily_market_board` is the live board input. It ranks the latest row per market and buckets names into `priority`, `watch`, or `pass`.
 
-The immediate operating model is:
+### `ops`
 
-1. create a **strategy session** for the day
-2. populate a **market board** across the available live cities/contracts
-3. persist explicit **bet proposals** with rationale and session context
-4. review / approve / adjust the strategy explicitly
-5. record a **paper bet** only after the day-level strategy is clear
-6. capture the outcome and retrospective review
+Workflow, review, paper betting, and learning layer.
 
-This creates a simulation environment that behaves like live deployment even before real execution is turned on.
+Key tables:
 
-## Auditability Requirement
+- `ops.strategy_sessions`
+- `ops.strategy_market_board`
+- `ops.strategy_review_events`
+- `ops.bet_proposals`
+- `ops.bet_proposal_events`
+- `ops.paper_bets`
+- `ops.paper_bet_reviews`
+- `ops.pipeline_runs`
+- `ops.decision_journal`
+- `ops.bet_executions`
+- `ops.bet_reviews`
 
-Every bet must be explainable after the fact.
+Key views:
 
-That means storing:
-- exact inputs seen at decision time
-- exact forecast snapshot used
-- exact market snapshot used
-- board-level context (how it compared to the other available bets)
-- proposal / approval / adjustment / rejection lineage
-- feature summary
-- model version / signal version
-- rationale text or JSON
-- execution result
-- retrospective review
+- `ops.v_strategy_proposal_outcomes`
+- `ops.v_strategy_board_learning_history`
+- `ops.v_paper_bet_history`
+- `ops.v_strategy_session_learning`
 
-## Self-Improvement Loop
+`ops.bet_executions` exists for real execution records, but the default operating workflow is still paper betting.
 
-The system should make it easy for a coding agent to review:
-- what we bet
-- why we bet
-- what happened
-- whether the signal was wrong, the execution was bad, or the market just stayed irrational
+## Data Pipeline
 
-That review loop is how the system becomes self-healing rather than just self-confident.
+### 1. Kalshi live ingest
+
+`src/weatherlab/ingest/kalshi_live.py` and `src/weatherlab/ingest/kalshi_live_sync.py`:
+
+- authenticate against `https://api.elections.kalshi.com/trade-api/v2`
+- sign requests with RSA-PSS
+- fetch open weather markets
+- normalize contract metadata and market prices
+- write contract rows into `core.weather_contracts`
+- write market snapshots into `core.market_snapshots`
+- rematerialize `features.contract_training_rows`
+
+The current live sync path writes normalized core rows directly. The `raw` schema still exists for source payload landing and historical ingest paths, but it is not the primary live entry point.
+
+### 2. Forecast ingest
+
+Forecast sources write into:
+
+- `core.forecast_snapshots`
+- `core.forecast_distributions`
+
+Current repo paths include:
+
+- Open-Meteo helpers for forecast snapshots
+- historical archive work under `weatherlab.ingest.historical_forecasts`
+- archived NWS text work under `weatherlab.ingest.archived_nws_forecasts`
+
+The live board depends on this layer being populated. Without current forecast snapshots, the board can show markets but not useful fair values.
+
+### 3. Settlement ingest
+
+Settlement truth writes into `core.settlement_observations`.
+
+That layer supports:
+
+- historical evaluation
+- learning views
+- paper bet review
+- future calibration work
+
+### 4. Feature materialization
+
+`sql/views/001_training_view.sql` builds `features.v_training_rows` by joining:
+
+- contracts
+- market snapshots
+- latest available forecast snapshot at decision time
+- settlement truth
+
+`src/weatherlab/build/training_rows.py` then materializes `features.contract_training_rows`.
+
+### 5. Daily board build
+
+`sql/views/004_live_betting_views.sql` defines `features.v_daily_market_board`, which:
+
+- selects the latest point-in-time row per market
+- carries fair probability and edge metrics forward
+- ranks candidates across the day
+- assigns `priority`, `watch`, or `pass`
+
+This is the board consumed by the live workflow.
+
+## Live Workflow
+
+The live workflow lives under `src/weatherlab/live/`.
+
+Canonical flow:
+
+1. Create a strategy session in `ops.strategy_sessions`
+2. Copy the relevant board rows into `ops.strategy_market_board`
+3. Generate candidate proposals in `ops.bet_proposals`
+4. Record review and approval changes in `ops.strategy_review_events` and `ops.bet_proposal_events`
+5. Convert approved names into `ops.paper_bets`
+6. Settle paper bets and write `ops.paper_bet_reviews`
+7. Read the learning views back through the web app and history dashboard
+
+Important fields carried through the workflow:
+
+- `strategy_variant`
+- `scenario_label`
+- `forecast_snapshot_id`
+- board rank and bucket
+- thesis and rationale payloads
+
+Those fields are what make two-strategy comparison and later learning possible.
+
+## Web App
+
+The app lives in `src/weatherlab/live/web/`.
+
+Routes:
+
+- `/` and `/today`
+  - current board summary
+  - top recommendations
+  - proposal and approval state
+  - recent sessions and paper bets
+- `/board`
+  - latest captured board
+- `/board/{strategy_date}`
+  - a specific date's board scan and available runs
+- `/strategies/{strategy_id}`
+  - one session's thesis, board summary, proposals, review events, and linked paper bets
+- `/paper-bets`
+  - open exposure plus settled outcomes and lessons
+- `/history`
+  - historical learning by strategy, variant, scenario, city, approval outcome, time to close, and expected edge band
+- `/healthz`
+  - schema readiness check for the app's required tables and views
+
+The app is currently read-oriented. It presents workflow state already stored in DuckDB; it does not yet perform approvals, conversions, settlement, or live order management through the browser.
+
+## Module Layout
+
+- `src/weatherlab/ingest/`
+  - API clients and source ingest paths
+- `src/weatherlab/build/`
+  - bootstrap, registry load, materialization, promotion helpers
+- `src/weatherlab/live/`
+  - strategy workflow, persistence, queries, CLI entry points
+- `src/weatherlab/live/web/`
+  - FastAPI app, templates, static assets
+- `src/weatherlab/research/`
+  - research-facing entry points for replay and evaluation
+- `src/weatherlab/ops/`
+  - compatibility imports for older live paths
+- `src/weatherlab/parse/`
+  - contract parsing and audits
+
+## Key Config And State Files
+
+- `config/cities.yml`
+  - city registry used for canonical city IDs and default primary stations
+- `config/stations.yml`
+  - station registry used for settlement alignment and future airport-specific forecast work
+- `.env`
+  - local environment config, including Kalshi API settings and DuckDB path override
+- `.kalshi_private_key.pem`
+  - gitignored private key for Kalshi request signing
+- `artifacts/daily-strategy/`
+  - generated JSON, Markdown, and HTML summaries for daily strategy runs
+
+## What Is No Longer Primary
+
+- Historical parquet extraction still exists for research and replay, but it is not the primary architecture to understand first.
+- The repo should not be described as a parquet-first pipeline with a small experimental live layer attached.
+- The main operating model is now live board generation plus paper-trading workflow, with research and historical evaluation supporting that loop.

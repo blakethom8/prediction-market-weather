@@ -1,160 +1,151 @@
 # Prediction Market Weather
 
-Weather-first research and trading infrastructure for Kalshi-style prediction markets.
+Prediction Market Weather is a local, paper-first weather prediction market betting assistant for Kalshi weather contracts. It syncs live Kalshi markets, stores point-in-time market and forecast data in DuckDB, ranks the current board, records strategy sessions and proposals, tracks paper bets and lessons, and serves a FastAPI review app.
 
-## Thesis
-Estimate reality first, then compare it to market prices, then decide whether any edge survives execution.
+Real order placement has been tested, but the default workflow is still paper bets first. The goal is disciplined daily decision-making with a clean audit trail, not hiding the process behind premature automation.
 
-## MVP Scope
-- Kalshi daily weather markets first
-- Clean warehouse in DuckDB
-- Forecast snapshots + settlement truth + market snapshots
-- Fixed `eval.py`, editable signal logic under `weatherlab.signal`
-- Transparent decision journaling for bet review and future agent audits
+## What The Project Does Today
 
-## Core Principle
-Forecast first, bid second.
+- Syncs live weather markets from `https://api.elections.kalshi.com/trade-api/v2`
+- Signs Kalshi API requests with RSA-PSS using a local `.kalshi_private_key.pem`
+- Stores data in a DuckDB warehouse with `raw`, `core`, `features`, and `ops` layers
+- Builds a ranked daily board from `features.v_daily_market_board`
+- Runs a paper betting workflow: strategy session -> board -> proposals -> review -> paper bets -> settlement review
+- Serves a local FastAPI app with Today, Board, Strategy Session, Paper Bets, and History pages
+- Tracks `strategy_variant` and `scenario_label` so runs can be compared later
 
-## Developer Workflow
+## Quick Start
 
-### Setup
+### 1. Create a virtualenv and install the package
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+Equivalent helper:
+
 ```bash
 ./scripts/setup_env.sh
 ```
 
-### Bootstrap the warehouse
+### 2. Create `.env`
+
 ```bash
-./scripts/bootstrap_db.sh
+KALSHI_API_KEY_ID=your-key-id
+KALSHI_API_BASE_URL=https://api.elections.kalshi.com/trade-api/v2
+KALSHI_API_PRIVATE_KEY_PATH=.kalshi_private_key.pem
+WEATHER_WAREHOUSE_PATH=data/warehouse/weather_markets.duckdb
 ```
 
-### Run self-tests
+Notes:
+
+- `KALSHI_API_PRIVATE_KEY_PATH` defaults to `.kalshi_private_key.pem`
+- `.env` is loaded automatically by `src/weatherlab/settings.py`
+- The private key file is gitignored
+
+### 3. Put the Kalshi private key in the repo root
+
 ```bash
-make test
+chmod 600 .kalshi_private_key.pem
 ```
 
-`make` targets prefer `.venv/bin/python` when that environment exists and run against `src/` directly, so the local test loop does not depend on reinstalling the package.
+The client expects an RSA private key and signs requests with RSA-PSS padding.
 
-## Current Status
-The repo now includes:
-- DuckDB schema scaffolding
-- a contract parser baseline for weather thresholds/buckets
-- a minimal signal/evaluator baseline
-- decision logging and rationale scaffolding
-- unit tests covering parser behavior, evaluator scoring, schema bootstrap, registry loading, decision logging, and end-to-end training rows
+### 4. Bootstrap the DuckDB schema
 
-## Near-Term Build Priorities
-1. Expand contract parsing for real Kalshi weather titles/rules
-2. Add city/station registry with settlement-aligned mappings
-3. Implement forecast ingestion snapshots
-4. Implement settlement truth ingestion
-5. Build the first contract × timestamp training rows from real data
-
-## Focus-City Workflow
-For the honest historical pipeline, do not assume every city is equally ready.
-
-Recommended first focus:
-- `nyc`
-- `chi`
-
-These remain the default research-focus cities unless overridden. They are not a live-board filter.
-
-You can restrict historical forecast backfills with:
 ```bash
-WEATHER_FOCUS_CITIES=nyc,chi .venv/bin/python -m weatherlab.ingest.historical_forecasts
+make bootstrap
 ```
 
-Archive-source planning notes live in:
-- `docs/HISTORICAL_FORECAST_ARCHIVE_PLAN.md`
+On a fresh warehouse, also load the static city and station registry:
 
-## Real Archived Forecast Ingestion
-The repo now includes a first real issued-time historical forecast path for the focus cities:
-- source: `iem-zfp`
-- NYC via `ZFPOKX` Manhattan zone block
-- Chicago via `ZFPLOT` Central Cook zone block
-
-This is not the full NDFD archive path yet, but it is a real archived forecast source with issuance timestamps and city-targeted forecast text.
-
-Run the backfill with:
 ```bash
-PYTHONPATH=src .venv/bin/python -c "from weatherlab.ingest.archived_nws_forecasts import backfill_archived_nws_zone_forecasts; print(backfill_archived_nws_zone_forecasts())"
+PYTHONPATH=src .venv/bin/python -m weatherlab.build.registry_loader
 ```
 
-## Live / Paper Betting Architecture
-The project is now also centered around a day-of operating loop:
-- create a strategy session
-- compare the full daily market board across available cities/contracts
-- generate a daily strategy summary
-- review / approve / adjust the strategy
-- record paper bets with rationale
-- settle and review outcomes
+### 5. Sync live Kalshi weather markets
 
-Key tables/views:
+```bash
+make fetch-live
+```
+
+This writes live contract metadata and market snapshots into DuckDB, rematerializes training rows, and refreshes `features.v_daily_market_board`.
+
+### 6. Create a daily strategy session
+
+```bash
+make daily-board -- --date 2026-03-23 --research-cities nyc,chi --strategy-variant baseline --thesis "Scan the full live board before isolating any single contract."
+```
+
+This creates:
+
 - `ops.strategy_sessions`
-- `ops.strategy_review_events`
 - `ops.strategy_market_board`
 - `ops.bet_proposals`
-- `ops.bet_proposal_events`
-- `ops.paper_bets`
-- `ops.paper_bet_reviews`
-- `ops.v_strategy_proposal_outcomes`
-- `ops.v_strategy_board_learning_history`
-- `ops.v_paper_bet_history`
-- `ops.v_strategy_session_learning`
-- `features.v_daily_market_board`
+- strategy artifacts in `artifacts/daily-strategy/`
 
-Live workflow code now lives under:
-- `src/weatherlab/live/`
+### 7. Start the web app
 
-This path should remain structurally separate from the historical research / ML path.
-
-Current package split:
-- `src/weatherlab/live/` for day-of workflow orchestration and persistence helpers
-- `src/weatherlab/research/` for historical/replay/evaluation entry points
-- `src/weatherlab/ops/` as a compatibility layer for older live workflow imports
-
-Betting platform system design doc:
-- `docs/BETTING_PLATFORM_ARCHITECTURE.md`
-
-Generate a day-of package with:
-```bash
-make daily-board -- --date 2026-03-23 --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."
-```
-
-The live board now scans all available markets by default. Use `--board-cities` only for targeted replays or debugging slices.
-
-Run the first local web surface with:
 ```bash
 make live-web
 ```
 
-The app is FastAPI with server-rendered Jinja templates. Main routes:
-- `/` dashboard landing page
-- `/history` historical performance / strategy learning review
-- `/board` latest daily board
-- `/board/<YYYY-MM-DD>` board for a specific strategy date
-- `/strategies/<strategy_id>` strategy session summary
-- `/paper-bets` paper bet / review page
+Open `http://127.0.0.1:8000`.
 
-More local run notes, including Tailscale-oriented usage, live in:
-- `docs/LOCAL_WEB_APP.md`
+## Key Make Targets
 
-Recommended local boot sequence for a fresh DuckDB file:
-```bash
-./scripts/setup_env.sh
-export WEATHER_WAREHOUSE_PATH="$PWD/data/warehouse/weather_markets.duckdb"
-make bootstrap
-make daily-board -- --date 2026-03-23 --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."
-make live-web
-```
+- `make setup` creates `.venv` and installs the project
+- `make bootstrap` creates DuckDB schemas and views
+- `make fetch-live` syncs open Kalshi weather markets into DuckDB
+- `make daily-board -- --date YYYY-MM-DD --thesis "..."` creates a strategy session and proposal set
+- `make live-web` runs the FastAPI app on `0.0.0.0:8000`
+- `make test` runs the unit test suite
+- `make extract-kalshi` imports historical Kalshi archive data
+- `make promote` promotes raw historical data into normalized core tables
+- `make backfill-forecasts` backfills historical forecast data
+- `make run-eval` runs the historical evaluator
 
-If there is not yet any market data for that strategy date, the daily package still creates a reviewable strategy session and the web app renders the empty-state board, strategy, paper-bet, and health pages cleanly.
+## Web App
 
-Use city-level coverage diagnostics to see which cities currently have:
-- enough contracts/snapshots
-- official settlement coverage
-- live-ish forecast coverage vs archive-only proxy coverage
+- `/` and `/today` show the current day board, recommendations, proposal state, recent sessions, and recent paper bets
+- `/board` shows the latest captured board
+- `/board/{YYYY-MM-DD}` shows a specific strategy date
+- `/strategies/{strategy_id}` shows one strategy session, its proposals, review events, and linked paper bets
+- `/paper-bets` shows open exposure plus settled outcomes and lessons
+- `/history` shows historical learning grouped by strategy, variant, scenario, city, approval outcome, time to close, and edge band
+- `/healthz` checks that the required live tables and views exist
 
-## Current Audit Tooling
-- `scripts/run_parser_audit.py <input.csv> [output.json]` will batch-audit market titles
-- `src/weatherlab/build/registry_loader.py` loads city/station registries into DuckDB
-- tests now cover parser behavior, parser audit summaries, schema bootstrap, registry loading, and decision logging
+## Architecture At A Glance
+
+Live path:
+
+1. Kalshi API -> `weatherlab.ingest.kalshi_live_sync`
+2. DuckDB core market data
+3. Forecast snapshots in `core.forecast_snapshots`
+4. `features.v_training_rows` -> `features.contract_training_rows`
+5. `features.v_daily_market_board`
+6. `ops.strategy_sessions` / `ops.bet_proposals` / `ops.paper_bets`
+7. FastAPI app and history views
+
+Historical and learning path:
+
+1. Historical market and forecast ingestion
+2. Settlement truth
+3. Point-in-time training rows
+4. Evaluation and learning views
+5. `/history` analytics
+
+More detail:
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md)
+- [`docs/LOCAL_WEB_APP.md`](docs/LOCAL_WEB_APP.md)
+- [`OBSERVABILITY.md`](OBSERVABILITY.md)
+- [`docs/HISTORICAL_FORECAST_ARCHIVE_PLAN.md`](docs/HISTORICAL_FORECAST_ARCHIVE_PLAN.md)
+
+## Current Boundaries
+
+- The web app is read-oriented today. It shows workflow state from DuckDB, but it does not yet expose write actions for approval, conversion, settlement, or live order management.
+- Paper bets are the primary workflow.
+- Real order placement is a completed milestone, not the default operating path.
+- Board quality depends on having current forecast snapshots in `core.forecast_snapshots`; `make fetch-live` only handles the Kalshi side of the board.

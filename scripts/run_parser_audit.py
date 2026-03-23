@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""Batch-audit contract titles with the weather contract parser.
+
+Usage:
+    PYTHONPATH=src python3 scripts/run_parser_audit.py <input.csv> [output.json]
+"""
+
 from __future__ import annotations
 
 import csv

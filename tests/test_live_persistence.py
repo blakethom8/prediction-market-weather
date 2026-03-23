@@ -11,12 +11,16 @@ from weatherlab.ingest.contracts import ingest_contract
 from weatherlab.ingest.market_snapshots import ingest_market_snapshot
 from weatherlab.ingest.open_meteo import ingest_open_meteo_daily_payload
 from weatherlab.ingest.settlement_observations import ingest_settlement_observation
-from weatherlab.live.persistence import replace_strategy_proposals
-from weatherlab.ops.paper_bets import create_paper_bet, settle_paper_bet
-from weatherlab.ops.strategy import create_strategy_session, populate_strategy_market_board
+from weatherlab.live.persistence import (
+    create_paper_bet,
+    create_strategy_session,
+    populate_strategy_market_board,
+    replace_strategy_proposals,
+    settle_paper_bet,
+)
 
 
-class LiveBettingOpsTests(unittest.TestCase):
+class LivePersistenceTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmpdir.name) / 'live_betting.duckdb'

@@ -13,7 +13,6 @@ from pathlib import Path
 import duckdb
 
 from ..db import connect
-from ..settings import DATA_DIR
 
 logger = logging.getLogger(__name__)
 

@@ -7,37 +7,18 @@ live path is easier to distinguish from research-facing code.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 from ..db import connect
 from ..utils.ids import new_id
-
-
-def _normalize_city_ids(city_ids: list[str] | tuple[str, ...] | None) -> list[str]:
-    if not city_ids:
-        return []
-    return [city.strip().lower() for city in city_ids if city and city.strip()]
-
-
-def _json_dumps(payload: Any) -> str:
-    return json.dumps({} if payload is None else payload)
-
-
-def _json_loads(payload: Any, *, default: Any) -> Any:
-    if payload in (None, ''):
-        return default
-    if isinstance(payload, str):
-        return json.loads(payload)
-    return payload
-
-
-def _serialize_value(value: Any) -> Any:
-    if hasattr(value, 'isoformat'):
-        return value.isoformat()
-    return value
+from ._shared import (
+    json_dumps as _json_dumps,
+    json_loads as _json_loads,
+    normalize_city_ids as _normalize_city_ids,
+    serialize_value as _serialize_value,
+)
 
 
 def _insert_strategy_review_event(

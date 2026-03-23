@@ -1,76 +1,62 @@
-# Kalshi Weather Priority Roadmap
+# Prediction Market Weather Roadmap
 
-## Guiding Principle
+Paper bets remain the default path. The roadmap is about making that workflow sharper, safer, and more informative before turning live execution into the center of the product.
 
-Build the truth and replay layers before spending too much energy on clever gating, calibration, and configuration.
+## Complete
 
-## Build Now
+- Live Kalshi weather market sync is in place
+- Kalshi auth is wired with RSA-PSS signing and local private-key handling
+- The local FastAPI app is in place with Today, Board, Strategy Session, Paper Bets, and History pages
+- The DuckDB warehouse is organized into `raw`, `core`, `features`, and `ops`
+- The paper betting workflow is in place:
+  - strategy sessions
+  - captured board rows
+  - proposals
+  - approval events
+  - paper bets
+  - settlement reviews
+- Historical learning views and the `/history` dashboard are in place
+- `strategy_variant` and `scenario_label` are stored end to end so strategy comparisons are possible
+- Real order placement has been tested as a milestone
+  - first live test order: `a3675221-d090-4196-b812-b393ebfdb5f1`
 
-1. **Settlement / truth adapter**
-   - official-source-shaped ingestion
-   - final vs preliminary handling
-   - station/date normalization
-   - realistic fixtures + tests
+## Near-Term
 
-2. **Source-backed decision replay**
-   - take a parsed contract + forecast + market snapshot + settlement truth
-   - materialize training row
-   - run signal
-   - generate rationale
-   - write decision journal entry
+- Airport and station-specific forecast alignment so fair values match Kalshi settlement rules more closely
+- A better calibrated fair-probability model instead of relying on one rough forecast layer
+- Explicit order-management plumbing
+  - write live executions into `ops.bet_executions`
+  - poll and store order status
+  - support cancel and replace flows
+- Clear forecast freshness and board freshness checks
+- A cleaner operator write path for approvals, conversions, and settlement instead of relying only on Python helpers
 
-## Build Next
+## Medium-Term
 
-3. **Strategy config layer**
-   - min confidence
-   - min edge
-   - max open positions
-   - daily loss caps
-   - per-city limits
-   - time-to-close gates
+- Multi-city scaling beyond the current confidence-anchor workflow
+- Better side-by-side strategy comparison by `strategy_variant`
+- Automated daily workflow
+  - fetch live markets
+  - refresh forecasts
+  - build the board
+  - create the daily strategy package
+  - refresh the web app and notifications
+- Intraday board refreshes instead of a single day-level snapshot
+- Stronger historical calibration and learning loops tied back to live decisions
 
-4. **Decision gate report**
-   - did forecast gate pass?
-   - did market gate pass?
-   - did risk gate pass?
-   - why was a bet skipped?
+## Not Done Yet
 
-5. **Confidence tracking / city-specific calibration**
-   - calibration by city
-   - forecast error by city
-   - realized edge by city
-   - threshold review over time
+- The web app is not yet a full order-management console
+- Live execution is not the default operating mode
+- Forecast ingestion for the live board is not yet a one-command operator flow
+- Strategy comparison exists in the data model and history views, but the workflow around it still needs tightening
 
-## Build Later
+## Direction
 
-6. **Paper trading / richer evaluator**
-7. **Review dashboard / postmortem surface**
-8. **Execution engine**
+The next useful version of this project is not "more automation everywhere." It is:
 
-## Current Sprint Objective
-
-Make the MVP testing environment more honest by strengthening:
-- settlement truth
-- source-backed replay
-- tests and fixtures around both
-- focus-city historical pipeline maturity (start with NYC + Chicago)
-- archived forecast source plan centered on NDFD archive with IEM text fallback
-- first real archived issued-time forecast ingestion path (`iem-zfp`) for NYC + Chicago
-
-## Current Architectural Priority
-
-The immediate product priority is now the **point-in-time betting architecture**:
-- compare the full daily board before selecting a bet
-- generate a daily strategy package/report
-- capture rationale, forecast context, approvals, and abstentions
-- settle outcomes and review paper performance
-- improve daily edge selection through iteration
-- keep live/app code structurally separate from research/ML code even while they share one repo
-
-The biggest remaining honesty gap for research is still **"available data at the time"**.
-
-That means:
-- do not treat archive/reanalysis data as if it were a real historical forecast issuance
-- use archive sources as proxy layers only
-- build the first serious historical pipeline for a small number of cities before scaling out
-- prefer explicit city-readiness diagnostics over vague confidence
+- better station alignment
+- better fair values
+- tighter order and review logging
+- easier daily operation
+- cleaner comparison between strategy variants

@@ -6,7 +6,6 @@ import duckdb
 
 from weatherlab.build.bootstrap import bootstrap
 from weatherlab.ingest.kalshi_history import (
-    WEATHER_TICKER_PREFIXES,
     ExtractionResult,
     _build_weather_filter_sql,
     extract_weather_history,

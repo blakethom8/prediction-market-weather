@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 
 from ...build.bootstrap import bootstrap
 from ...db import connect
+from .._shared import sum_numeric as _sum_numeric
 from ..queries import (
     get_dashboard_snapshot,
     get_history_snapshot,
@@ -128,12 +129,6 @@ def _notes_display(value: Any) -> str:
         parts = [str(item) for item in value if item not in (None, '')]
         return '; '.join(parts) if parts else 'n/a'
     return str(value)
-
-
-def _sum_numeric(rows: list[dict[str, Any]], key: str) -> float:
-    return sum(float(row.get(key) or 0.0) for row in rows)
-
-
 def _build_paper_summary(
     *,
     strategy_filter: str | None,

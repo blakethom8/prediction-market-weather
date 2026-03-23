@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Initialize the DuckDB warehouse schema for the current checkout.
+# Usage: ./scripts/bootstrap_db.sh
+
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [ -x .venv/bin/python ]; then
