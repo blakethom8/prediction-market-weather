@@ -9,7 +9,7 @@
     <p class="hero-copy">{{ detail.session.thesis }}</p>
     <div class="chip-row">
       <span class="chip">{{ detail.summary.board_size }} markets / {{ detail.summary.board_city_count }} cities</span>
-      <span class="chip">Focus {{ detail.session.research_focus_cities|join(', ') or 'broad board' }}</span>
+      <span class="chip">Research anchors {{ detail.session.research_focus_cities|join(', ') or 'none recorded' }}</span>
       <span class="chip">Approval {{ detail.session.approval_status|status_label }}</span>
     </div>
   </div>
@@ -26,9 +26,9 @@
     <p>{{ detail.summary.board_size }} markets across {{ detail.summary.board_city_count }} cities.</p>
   </article>
   <article class="metric-card">
-    <span class="metric-label">Priority names</span>
-    <strong class="metric-value">{{ detail.summary.proposed_count }}</strong>
-    <p>Highest-ranked board rows ready for proposal review.</p>
+    <span class="metric-label">Available bets</span>
+    <strong class="metric-value">{{ detail.summary.available_candidate_count }}</strong>
+    <p>Priority and watch names still available on the current board.</p>
   </article>
   <article class="metric-card">
     <span class="metric-label">Pending proposals</span>
@@ -41,9 +41,9 @@
     <p>Paper positions already linked back to this scan.</p>
   </article>
   <article class="metric-card">
-    <span class="metric-label">Watchlist</span>
-    <strong class="metric-value">{{ detail.summary.watch_count }}</strong>
-    <p>Contracts worth monitoring but not yet clean enough to push.</p>
+    <span class="metric-label">Watchlist / passes</span>
+    <strong class="metric-value">{{ detail.summary.watch_count }} / {{ detail.summary.pass_count }}</strong>
+    <p>Near-miss names versus explicit no-trade rows on this scan.</p>
   </article>
 </section>
 
@@ -149,13 +149,13 @@
 <section class="panel">
   <div class="panel-header">
     <div>
-      <p class="eyebrow">Top candidates</p>
-      <h2>Highest-ranked board rows</h2>
+      <p class="eyebrow">Recommendations</p>
+      <h2>Top recommendations from this board</h2>
     </div>
   </div>
-  {% if detail.summary.top_candidates %}
+  {% if detail.summary.top_recommendations %}
   <div class="candidate-grid">
-    {% for row in detail.summary.top_candidates %}
+    {% for row in detail.summary.top_recommendations %}
     <article class="candidate-card">
       <div class="candidate-topline">
         <span class="badge badge-{{ row.candidate_bucket|status_tone }}">{{ row.candidate_bucket|status_label }}</span>
@@ -164,6 +164,7 @@
       <h3>{{ row.market_ticker }}</h3>
       <p>{{ row.market_title }}</p>
       <dl class="stat-list">
+        <div><dt>Action</dt><dd>{{ row.operator_action }}</dd></div>
         <div><dt>City</dt><dd>{{ row.city_id }}</dd></div>
         <div><dt>Ask</dt><dd>{{ row.price_yes_ask|cents_display }}</dd></div>
         <div><dt>Fair</dt><dd>{{ row.fair_prob|probability_display }}</dd></div>
@@ -175,12 +176,69 @@
         <span class="chip">{{ row.paper_bet_status|status_label }}</span>
         {% endif %}
       </div>
+      <p class="candidate-note">{{ row.operator_note }}</p>
     </article>
     {% endfor %}
   </div>
   {% else %}
   <p class="empty-copy">No priority or watch candidates surfaced from this board scan yet. Keep the session, record the pass, and revisit after the next data refresh if needed.</p>
   {% endif %}
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Watchlist</p>
+        <h2>Names to keep visible</h2>
+      </div>
+    </div>
+    {% if detail.summary.watchlist_rows %}
+    <div class="mini-list">
+      {% for row in detail.summary.watchlist_rows[:6] %}
+      <article class="mini-list-item">
+        <div>
+          <strong>{{ row.market_ticker }}</strong>
+          <p>{{ row.operator_note }}</p>
+        </div>
+        <div class="mini-list-meta">
+          <span>{{ row.edge_vs_ask|edge_display }}</span>
+          <span>{{ row.proposal_status|status_label if row.proposal_status else 'unproposed' }}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-copy">No watchlist names on this board.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Passes</p>
+        <h2>Explicit no-trade rows</h2>
+      </div>
+    </div>
+    {% if detail.summary.pass_rows %}
+    <div class="mini-list">
+      {% for row in detail.summary.pass_rows[:6] %}
+      <article class="mini-list-item">
+        <div>
+          <strong>{{ row.market_ticker }}</strong>
+          <p>{{ row.market_title|short_text(90) }}</p>
+        </div>
+        <div class="mini-list-meta">
+          <span>{{ row.edge_vs_ask|edge_display }}</span>
+          <span>{{ row.operator_action }}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-copy">No explicit passes were stored on this board.</p>
+    {% endif %}
+  </article>
 </section>
 
 <section class="panel">
@@ -264,7 +322,7 @@
     {% endif %}
   </div>
   <div class="hero-actions">
-    <code class="inline-callout">make daily-board -- --date {{ today }} --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."</code>
+    <code class="inline-callout">make daily-board -- --date {{ today }} --thesis "Scan the full board, then approve only the clearest weather edge."</code>
   </div>
 </section>
 {% endif %}

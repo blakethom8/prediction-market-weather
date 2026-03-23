@@ -12,14 +12,15 @@
   <header class="site-header">
     <div class="header-brand">
       <a class="brand" href="{{ request.url_for('dashboard') }}">Prediction Market Weather</a>
-      <p class="brand-subtitle">Local operator console for daily board scans, strategy review, and paper-bet lessons.</p>
+      <p class="brand-subtitle">Local operator console for today's board, recommendations, approvals, and paper-bet lessons.</p>
     </div>
     <nav class="site-nav">
-      <a href="{{ request.url_for('dashboard') }}" class="{% if nav == 'dashboard' %}is-active{% endif %}">Dashboard</a>
+      <a href="{{ request.url_for('today_page') }}" class="{% if nav == 'today' %}is-active{% endif %}">Today</a>
       <a href="{{ request.url_for('latest_board') }}" class="{% if nav == 'board' %}is-active{% endif %}">Board</a>
       <a href="{{ request.url_for('paper_bets_page') }}" class="{% if nav == 'paper-bets' %}is-active{% endif %}">Paper Bets</a>
     </nav>
     <div class="header-status">
+      <span class="chip">Broad board default</span>
       <span class="chip">DuckDB local</span>
       <span class="chip chip-muted">Tailscale browser ready</span>
       {% if latest_session %}

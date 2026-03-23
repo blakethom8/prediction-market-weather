@@ -26,9 +26,9 @@
     <p>{{ session.created_at_utc|datetime_display }}</p>
   </article>
   <article class="metric-card">
-    <span class="metric-label">Research focus</span>
-    <strong class="metric-value">{{ session.research_focus_cities|join(', ') or 'broad board' }}</strong>
-    <p>Research anchors guide review but do not replace the full-board scan.</p>
+    <span class="metric-label">Research anchors</span>
+    <strong class="metric-value">{{ session.research_focus_cities|join(', ') or 'none recorded' }}</strong>
+    <p>Anchors guide review confidence but do not replace the full-board scan.</p>
   </article>
   <article class="metric-card">
     <span class="metric-label">Proposal queue</span>
@@ -89,12 +89,16 @@
       <div>
         <dt>Top candidate</dt>
         <dd>
-          {% if summary.top_candidate %}
-          {{ summary.top_candidate.market_ticker }} / {{ summary.top_candidate.edge_vs_ask|edge_display }}
+          {% if summary.top_recommendations %}
+          {{ summary.top_recommendations[0].market_ticker }} / {{ summary.top_recommendations[0].edge_vs_ask|edge_display }}
           {% else %}
           n/a
           {% endif %}
         </dd>
+      </div>
+      <div>
+        <dt>Available bets</dt>
+        <dd>{{ summary.available_candidate_count }}</dd>
       </div>
       <div>
         <dt>Converted proposals</dt>

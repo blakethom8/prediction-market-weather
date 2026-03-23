@@ -1,118 +1,419 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% set detail = today_focus.active_detail %}
+{% set session = detail.session if detail else None %}
+{% set summary = detail.summary if detail else None %}
+{% set is_fallback = detail and today_focus.is_fallback_to_latest %}
+{% set active_date = session.strategy_date_local if session else today_focus.reference_date_local %}
+
 <section class="hero-panel">
   <div>
-    <p class="eyebrow">Operator console</p>
-    <h1>Betting workflow dashboard</h1>
-    {% if latest_session %}
-    <p class="hero-copy">Start with the latest board, make the review call on anything still pending, then check open paper exposure and closed-bet lessons.</p>
+    <p class="eyebrow">Today</p>
+    {% if detail and today_focus.has_today_session %}
+    <h1>{{ today_focus.reference_date_local }} board and recommendations</h1>
+    <p class="hero-copy">{{ session.thesis }}</p>
     <div class="chip-row">
-      <span class="chip">Latest {{ latest_session.strategy_date_local }}</span>
-      <span class="chip">Approval {{ latest_session.approval_status|status_label }}</span>
-      <span class="chip">{{ latest_session.board_market_count }} markets / {{ latest_session.board_city_count }} cities</span>
+      <span class="chip">Approval {{ session.approval_status|status_label }}</span>
+      <span class="chip">{{ summary.board_size }} markets / {{ summary.board_city_count }} cities</span>
+      <span class="chip">{{ summary.available_candidate_count }} available candidates</span>
+    </div>
+    {% elif detail and today_focus.is_fallback_to_latest %}
+    <h1>No strategy run stored for {{ today_focus.reference_date_local }} yet</h1>
+    <p class="hero-copy">Latest available context is {{ session.strategy_date_local }}. Use it to stay oriented, but generate a fresh broad-board run for today before acting.</p>
+    <div class="chip-row">
+      <span class="chip">Latest {{ session.strategy_date_local }}</span>
+      <span class="chip">Approval {{ session.approval_status|status_label }}</span>
+      <span class="chip">{{ summary.board_size }} markets / {{ summary.board_city_count }} cities</span>
     </div>
     {% else %}
-    <p class="hero-copy">No strategy sessions exist yet. Generate one daily package locally, then use this app to scan the board, review proposals, and log paper-bet outcomes.</p>
+    <h1>Today starts with the broad board</h1>
+    <p class="hero-copy">Generate the first daily package, then this page becomes the operating surface for recommendations, watchlist, passes, proposal status, and paper-bet follow-through.</p>
     {% endif %}
   </div>
   <div class="hero-actions">
-    {% if latest_session %}
-    <a class="button button-primary" href="{{ request.url_for('strategy_detail', strategy_id=latest_session.strategy_id) }}">Open latest strategy</a>
-    <a class="button" href="{{ request.url_for('latest_board') }}">Open latest board</a>
-    <a class="button" href="{{ request.url_for('paper_bets_page') }}">Review paper bets</a>
+    {% if detail %}
+    <a class="button button-primary" href="{{ request.url_for('strategy_detail', strategy_id=session.strategy_id) }}">Open active strategy</a>
+    <a class="button" href="{{ request.url_for('board_by_date', strategy_date=session.strategy_date_local) }}?strategy_id={{ session.strategy_id }}">Open full board</a>
+    <a class="button" href="{{ request.url_for('paper_bets_page') }}?strategy_id={{ session.strategy_id }}">Paper review</a>
     {% else %}
-    <code class="inline-callout">make daily-board -- --date {{ today }} --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."</code>
+    <code class="inline-callout">make daily-board -- --date {{ today }} --thesis "Scan the full board, then approve only the clearest weather edge."</code>
+    {% endif %}
+    {% if detail and today_focus.is_fallback_to_latest %}
+    <code class="inline-callout">make daily-board -- --date {{ today }} --thesis "Scan the full board, then approve only the clearest weather edge."</code>
     {% endif %}
   </div>
 </section>
 
+{% if detail %}
+<section class="metric-grid">
+  <article class="metric-card">
+    <span class="metric-label">Approval state</span>
+    <strong class="metric-value">{{ session.approval_status|status_label }}</strong>
+    <p>{{ summary.pending_proposals }} pending / {{ summary.adjusted_proposals }} adjusted / {{ summary.approved_proposals }} approved</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">{% if is_fallback %}Saved board candidates{% else %}Today's available bets{% endif %}</span>
+    <strong class="metric-value">{{ summary.available_candidate_count }}</strong>
+    <p>
+      {% if is_fallback %}
+      {{ summary.priority_candidate_count }} priority and {{ summary.watch_count }} watch names are coming from {{ active_date }}.
+      {% else %}
+      {{ summary.priority_candidate_count }} priority and {{ summary.watch_count }} watch names still on the board.
+      {% endif %}
+    </p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Top recommendations</span>
+    <strong class="metric-value">{{ summary.top_recommendations|length }}</strong>
+    <p>
+      {% if is_fallback %}
+      Highest-conviction names from the latest saved board.
+      {% else %}
+      Highest-conviction names that still deserve today's attention.
+      {% endif %}
+    </p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Watchlist / passes</span>
+    <strong class="metric-value">{{ summary.watch_count }} / {{ summary.pass_count }}</strong>
+    <p>Keep near-miss names visible and the explicit passes recorded.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Open paper book</span>
+    <strong class="metric-value">{{ summary.open_paper_bets }}</strong>
+    <p>{{ summary.open_paper_notional|money_display }} open notional tied to this strategy.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Tracked sessions</span>
+    <strong class="metric-value">{{ metrics.total_strategy_sessions }}</strong>
+    <p>{{ metrics.pending_strategy_reviews }} strategy reviews and {{ metrics.pending_proposals }} proposals are pending overall.</p>
+  </article>
+</section>
+
+{% if today_focus.today_sessions %}
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Session choice</p>
+      <h2>Runs for {{ today_focus.reference_date_local }}</h2>
+    </div>
+  </div>
+  <div class="session-strip">
+    {% for day_session in today_focus.today_sessions %}
+    <a class="session-chip {% if day_session.strategy_id == session.strategy_id %}is-current{% endif %}" href="{{ request.url_for('today_page') }}?strategy_id={{ day_session.strategy_id }}">
+      <span>{{ day_session.strategy_variant }} / {{ day_session.approval_status|status_label }}</span>
+      <strong>{{ day_session.strategy_id }}</strong>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="panel-grid">
+  <article class="panel panel-accent">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Operator cue</p>
+        <h2>What should we do today?</h2>
+      </div>
+      <span class="badge badge-{{ session.approval_status|status_tone }}">{{ session.approval_status|status_label }}</span>
+    </div>
+    <div class="queue-list">
+      {% for item in summary.operator_queue %}
+      <article class="queue-item">
+        <div class="queue-topline">
+          <span class="badge badge-{{ item.tone }}">{{ item.label }}</span>
+          <strong>{{ item.value }}</strong>
+        </div>
+        <p class="detail-copy">{{ item.note }}</p>
+      </article>
+      {% endfor %}
+    </div>
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Day thesis</p>
+        <h2>Strategy for the day</h2>
+      </div>
+    </div>
+    <p class="detail-copy thesis-copy">{{ session.thesis }}</p>
+    <div class="focus-grid">
+      {% for point in summary.strategy_points %}
+      <article class="focus-card">
+        <span class="detail-label">{{ point.label }}</span>
+        <strong>{{ point.value }}</strong>
+        <p>{{ point.note }}</p>
+      </article>
+      {% endfor %}
+    </div>
+    <div class="detail-block">
+      <span class="detail-label">Latest review note</span>
+      <p class="detail-copy">
+        {% if summary.latest_review_event %}
+        {{ summary.latest_review_event.notes|notes_display }}
+        {% else %}
+        {{ session.approval_notes|notes_display }}
+        {% endif %}
+      </p>
+    </div>
+    <div class="detail-block">
+      <span class="detail-label">Latest closed-bet lesson</span>
+      <p class="detail-copy">{{ summary.latest_lesson or 'No settled paper-bet lesson recorded yet.' }}</p>
+    </div>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Recommendations</p>
+      <h2>{% if is_fallback %}Latest recommendations on file{% else %}Top recommendations right now{% endif %}</h2>
+    </div>
+    <a href="{{ request.url_for('board_by_date', strategy_date=session.strategy_date_local) }}?strategy_id={{ session.strategy_id }}">Open full board</a>
+  </div>
+  {% if summary.top_recommendations %}
+  <div class="candidate-grid">
+    {% for row in summary.top_recommendations %}
+    <article class="candidate-card emphasis-card">
+      <div class="candidate-topline">
+        <span class="badge badge-{{ row.candidate_bucket|status_tone }}">{{ row.candidate_bucket|status_label }}</span>
+        <span class="candidate-rank">Rank {{ row.candidate_rank }}</span>
+      </div>
+      <h3>{{ row.market_ticker }}</h3>
+      <p>{{ row.market_title }}</p>
+      <dl class="stat-list">
+        <div><dt>Action</dt><dd>{{ row.operator_action }}</dd></div>
+        <div><dt>Ask</dt><dd>{{ row.price_yes_ask|cents_display }}</dd></div>
+        <div><dt>Fair</dt><dd>{{ row.fair_prob|probability_display }}</dd></div>
+        <div><dt>Edge</dt><dd>{{ row.edge_vs_ask|edge_display }}</dd></div>
+      </dl>
+      <div class="chip-row">
+        {% if row.proposal_status %}
+        <span class="chip">{{ row.proposal_status|status_label }}</span>
+        {% endif %}
+        {% if row.paper_bet_status %}
+        <span class="chip">{{ row.paper_bet_status|status_label }}</span>
+        {% endif %}
+      </div>
+      <p class="candidate-note">{{ row.operator_note }}</p>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-copy">
+    {% if is_fallback %}
+    No trade-ready recommendations surfaced from the latest saved board. Generate a fresh run for {{ today_focus.reference_date_local }} before acting.
+    {% else %}
+    No trade-ready recommendations surfaced from the active board. Keep the passes explicit and let the next refresh compete for attention.
+    {% endif %}
+  </p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Available bets</p>
+      <h2>{% if is_fallback %}Available candidate bets from {{ active_date }}{% else %}Today's available candidate bets{% endif %}</h2>
+    </div>
+  </div>
+  {% if is_fallback %}
+  <p class="panel-copy">Showing the latest saved board while {{ today_focus.reference_date_local }} still has no stored strategy run. Generate today's broad-board package before taking action.</p>
+  {% endif %}
+  {% if summary.available_candidates %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Bucket</th>
+          <th>Workflow</th>
+          <th>Pricing</th>
+          <th>Close</th>
+          <th>Why now</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in summary.available_candidates %}
+        <tr>
+          <td data-label="Market">
+            <strong>{{ row.market_ticker }}</strong>
+            <div class="cell-note">{{ row.city_id }} / rank {{ row.candidate_rank }}</div>
+          </td>
+          <td data-label="Bucket"><span class="badge badge-{{ row.candidate_bucket|status_tone }}">{{ row.candidate_bucket|status_label }}</span></td>
+          <td data-label="Workflow">
+            <span class="badge badge-{{ row.operator_tone }}">{{ row.operator_action }}</span>
+            {% if row.proposal_status %}
+            <div class="cell-note">{{ row.proposal_status|status_label }}</div>
+            {% endif %}
+          </td>
+          <td data-label="Pricing">
+            <strong>{{ row.price_yes_ask|cents_display }} ask</strong>
+            <div class="cell-note">Fair {{ row.fair_prob|probability_display }} / edge {{ row.edge_vs_ask|edge_display }}</div>
+          </td>
+          <td data-label="Close">
+            {% if row.minutes_to_close is not none %}
+            {{ row.minutes_to_close }} min
+            {% else %}
+            n/a
+            {% endif %}
+          </td>
+          <td data-label="Why now">{{ row.operator_note }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">
+    {% if is_fallback %}
+    No available candidate bets are left on the latest saved board.
+    {% else %}
+    No available candidate bets are left on the board right now.
+    {% endif %}
+  </p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Workflow state</p>
+      <h2>{% if is_fallback %}Proposal status and approval state from {{ active_date }}{% else %}Proposal status and approval state{% endif %}</h2>
+    </div>
+    <span class="badge badge-{{ session.approval_status|status_tone }}">{{ session.approval_status|status_label }}</span>
+  </div>
+  {% if is_fallback %}
+  <p class="panel-copy">These proposal and paper workflow states belong to the latest saved session on {{ active_date }}.</p>
+  {% endif %}
+  <p class="panel-copy">{{ summary.pending_proposals }} pending / {{ summary.adjusted_proposals }} adjusted / {{ summary.approved_proposals }} approved / {{ summary.rejected_proposals }} rejected / {{ summary.converted_proposals }} converted.</p>
+  {% if detail.proposal_rows %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Status</th>
+          <th>Target</th>
+          <th>Edge</th>
+          <th>Paper</th>
+          <th>Rationale</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for proposal in detail.proposal_rows %}
+        <tr>
+          <td data-label="Market">
+            <strong>{{ proposal.market_ticker }}</strong>
+            <div class="cell-note">{{ proposal.city_id }} / rank {{ proposal.candidate_rank }}</div>
+          </td>
+          <td data-label="Status"><span class="badge badge-{{ proposal.proposal_status|status_tone }}">{{ proposal.proposal_status|status_label }}</span></td>
+          <td data-label="Target">
+            <strong>{{ proposal.target_price|cents_display }}</strong>
+            <div class="cell-note">{{ proposal.side|status_label }} / fair {{ proposal.fair_prob|probability_display }}</div>
+          </td>
+          <td data-label="Edge">{{ proposal.perceived_edge|edge_display }}</td>
+          <td data-label="Paper">
+            {% if proposal.paper_bet_status %}
+            <span class="badge badge-{{ proposal.paper_bet_status|status_tone }}">{{ proposal.paper_bet_status|status_label }}</span>
+            <div class="cell-note">{{ proposal.paper_bet_id }}</div>
+            {% elif proposal.paper_bet_id %}
+            <span class="badge badge-neutral">linked</span>
+            <div class="cell-note">{{ proposal.paper_bet_id }}</div>
+            {% else %}
+            <span class="cell-note">Not converted</span>
+            {% endif %}
+          </td>
+          <td data-label="Rationale">{{ proposal.rationale_summary|short_text(110) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No proposals are stored for the active strategy yet.</p>
+  {% endif %}
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Watchlist</p>
+        <h2>Names to keep visible</h2>
+      </div>
+    </div>
+    {% if summary.watchlist_rows %}
+    <div class="mini-list">
+      {% for row in summary.watchlist_rows[:6] %}
+      <article class="mini-list-item">
+        <div>
+          <strong>{{ row.market_ticker }}</strong>
+          <p>{{ row.operator_note }}</p>
+        </div>
+        <div class="mini-list-meta">
+          <span>{{ row.edge_vs_ask|edge_display }}</span>
+          <span>{{ row.proposal_status|status_label if row.proposal_status else 'unproposed' }}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-copy">No watchlist names on this board.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Passes</p>
+        <h2>Explicit no-trade names</h2>
+      </div>
+    </div>
+    {% if summary.pass_rows %}
+    <div class="mini-list">
+      {% for row in summary.pass_rows[:6] %}
+      <article class="mini-list-item">
+        <div>
+          <strong>{{ row.market_ticker }}</strong>
+          <p>{{ row.market_title|short_text(90) }}</p>
+        </div>
+        <div class="mini-list-meta">
+          <span>{{ row.edge_vs_ask|edge_display }}</span>
+          <span>{{ row.operator_action }}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-copy">No explicit passes were stored on this board.</p>
+    {% endif %}
+  </article>
+</section>
+{% else %}
 <section class="metric-grid">
   <article class="metric-card">
     <span class="metric-label">Tracked sessions</span>
     <strong class="metric-value">{{ metrics.total_strategy_sessions }}</strong>
     <p>Daily strategy containers stored in the local ops schema.</p>
   </article>
-  {% for item in attention_items %}
   <article class="metric-card">
-    <span class="metric-label">{{ item.label }}</span>
-    <strong class="metric-value">{{ item.value }}</strong>
-    <p>{{ item.note }}</p>
+    <span class="metric-label">Pending strategy reviews</span>
+    <strong class="metric-value">{{ metrics.pending_strategy_reviews }}</strong>
+    <p>Sessions still waiting for an approve, reject, or adjust call.</p>
   </article>
-  {% endfor %}
-</section>
-
-{% if latest_detail %}
-<section class="panel-grid">
-  <article class="panel panel-accent">
-    <div class="panel-header">
-      <div>
-        <p class="eyebrow">Latest session</p>
-        <h2>What needs attention now</h2>
-      </div>
-      <span class="badge badge-{{ latest_detail.session.approval_status|status_tone }}">{{ latest_detail.session.approval_status|status_label }}</span>
-    </div>
-    {% if latest_detail.summary.pending_proposals %}
-    <p class="panel-copy">{{ latest_detail.summary.pending_proposals }} proposal{% if latest_detail.summary.pending_proposals != 1 %}s{% endif %} still need review. Start with {{ latest_detail.summary.top_candidate.market_ticker if latest_detail.summary.top_candidate else 'the top-ranked contract' }} and confirm whether the priority set is ready to approve or adjust.</p>
-    {% elif latest_detail.summary.open_paper_bets %}
-    <p class="panel-copy">The latest strategy is already reviewed. Focus on {{ latest_detail.summary.open_paper_bets }} open paper bet{% if latest_detail.summary.open_paper_bets != 1 %}s{% endif %} and whether any prices or sizing assumptions need to be revisited.</p>
-    {% else %}
-    <p class="panel-copy">The latest session is not waiting on an obvious queue. Use the board to confirm nothing new has surfaced and skim closed-bet lessons before the next refresh.</p>
-    {% endif %}
-    <dl class="stat-list">
-      <div>
-        <dt>Board</dt>
-        <dd>{{ latest_detail.summary.board_size }} markets / {{ latest_detail.summary.board_city_count }} cities</dd>
-      </div>
-      <div>
-        <dt>Priority bucket</dt>
-        <dd>{{ latest_detail.summary.proposed_count }} names</dd>
-      </div>
-      <div>
-        <dt>Best edge</dt>
-        <dd>
-          {% if latest_detail.summary.best_edge_row %}
-          {{ latest_detail.summary.best_edge_row.market_ticker }} / {{ latest_detail.summary.best_edge_row.edge_vs_ask|edge_display }}
-          {% else %}
-          n/a
-          {% endif %}
-        </dd>
-      </div>
-      <div>
-        <dt>Paper book</dt>
-        <dd>{{ latest_detail.summary.open_paper_bets }} open / {{ latest_detail.summary.closed_paper_bets }} closed</dd>
-      </div>
-    </dl>
+  <article class="metric-card">
+    <span class="metric-label">Pending proposals</span>
+    <strong class="metric-value">{{ metrics.pending_proposals }}</strong>
+    <p>Contracts sitting in the proposal queue.</p>
   </article>
-
-  <article class="panel">
-    <div class="panel-header">
-      <div>
-        <p class="eyebrow">Session detail</p>
-        <h2>Top opportunity and review note</h2>
-      </div>
-    </div>
-    {% if latest_detail.summary.top_candidate %}
-    <div class="detail-block">
-      <span class="detail-label">Top candidate</span>
-      <strong class="detail-value">{{ latest_detail.summary.top_candidate.market_ticker }}</strong>
-      <p class="detail-copy">{{ latest_detail.summary.top_candidate.market_title }}</p>
-      <p class="detail-copy">Rank {{ latest_detail.summary.top_candidate.candidate_rank }} / {{ latest_detail.summary.top_candidate.candidate_bucket|status_label }} / ask {{ latest_detail.summary.top_candidate.price_yes_ask|cents_display }} / fair {{ latest_detail.summary.top_candidate.fair_prob|probability_display }} / edge {{ latest_detail.summary.top_candidate.edge_vs_ask|edge_display }}</p>
-    </div>
-    {% endif %}
-    <div class="detail-block">
-      <span class="detail-label">Latest review note</span>
-      {% if latest_detail.summary.latest_review_event %}
-      <p class="detail-copy">{{ latest_detail.summary.latest_review_event.notes|notes_display }}</p>
-      <p class="detail-meta">{{ latest_detail.summary.latest_review_event.reviewed_at_utc|datetime_display }} by {{ latest_detail.summary.latest_review_event.actor }}</p>
-      {% else %}
-      <p class="detail-copy">{{ latest_detail.session.approval_notes|notes_display }}</p>
-      {% endif %}
-    </div>
-    <div class="detail-block">
-      <span class="detail-label">Latest closed-bet lesson</span>
-      <p class="detail-copy">{{ latest_detail.summary.latest_lesson or 'No settled paper-bet lesson recorded yet.' }}</p>
-    </div>
+  <article class="metric-card">
+    <span class="metric-label">Paper bets</span>
+    <strong class="metric-value">{{ metrics.open_paper_bets }} / {{ metrics.closed_paper_bets }}</strong>
+    <p>Open versus closed paper positions recorded so far.</p>
   </article>
 </section>
 {% endif %}
@@ -121,7 +422,7 @@
   <div class="panel-header">
     <div>
       <p class="eyebrow">Recent sessions</p>
-      <h2>Strategy sessions</h2>
+      <h2>Latest strategy containers</h2>
     </div>
   </div>
   {% if recent_sessions %}
@@ -137,19 +438,19 @@
         </tr>
       </thead>
       <tbody>
-        {% for session in recent_sessions %}
+        {% for recent in recent_sessions %}
         <tr>
           <td data-label="Date">
-            <strong>{{ session.strategy_date_local }}</strong>
-            <div class="cell-note">{{ session.strategy_id }}</div>
+            <strong>{{ recent.strategy_date_local }}</strong>
+            <div class="cell-note">{{ recent.strategy_id }}</div>
           </td>
-          <td data-label="Thesis">{{ session.thesis|short_text(110) }}</td>
-          <td data-label="Board">{{ session.board_market_count }} markets / {{ session.board_city_count }} cities</td>
-          <td data-label="Review"><span class="badge badge-{{ session.approval_status|status_tone }}">{{ session.approval_status|status_label }}</span></td>
+          <td data-label="Thesis">{{ recent.thesis|short_text(110) }}</td>
+          <td data-label="Board">{{ recent.board_market_count }} markets / {{ recent.board_city_count }} cities</td>
+          <td data-label="Review"><span class="badge badge-{{ recent.approval_status|status_tone }}">{{ recent.approval_status|status_label }}</span></td>
           <td data-label="Links" class="align-right">
-            <a href="{{ request.url_for('strategy_detail', strategy_id=session.strategy_id) }}">Strategy</a>
+            <a href="{{ request.url_for('strategy_detail', strategy_id=recent.strategy_id) }}">Strategy</a>
             <span class="pipe">/</span>
-            <a href="{{ request.url_for('board_by_date', strategy_date=session.strategy_date_local) }}?strategy_id={{ session.strategy_id }}">Board</a>
+            <a href="{{ request.url_for('board_by_date', strategy_date=recent.strategy_date_local) }}?strategy_id={{ recent.strategy_id }}">Board</a>
           </td>
         </tr>
         {% endfor %}
@@ -157,7 +458,7 @@
     </table>
   </div>
   {% else %}
-  <p class="empty-copy">No strategy sessions yet. The dashboard will populate after the first `make daily-board` run.</p>
+  <p class="empty-copy">No strategy sessions yet. The daily workflow will populate after the first `make daily-board` run.</p>
   {% endif %}
 </section>
 

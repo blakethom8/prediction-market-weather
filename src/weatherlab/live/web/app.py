@@ -17,6 +17,7 @@ from ..queries import (
     get_dashboard_snapshot,
     get_latest_strategy_id,
     get_strategy_detail,
+    get_today_snapshot,
     list_paper_bets,
     list_strategy_sessions,
     list_strategy_sessions_for_date,
@@ -124,47 +125,6 @@ def _notes_display(value: Any) -> str:
 
 def _sum_numeric(rows: list[dict[str, Any]], key: str) -> float:
     return sum(float(row.get(key) or 0.0) for row in rows)
-
-
-def _build_dashboard_attention_items(snapshot: dict[str, Any], latest_detail: dict[str, Any] | None) -> list[dict[str, Any]]:
-    metrics = snapshot['metrics']
-    items = [
-        {
-            'label': 'Strategy reviews waiting',
-            'value': metrics['pending_strategy_reviews'],
-            'tone': 'warn' if metrics['pending_strategy_reviews'] else 'good',
-            'note': 'Sessions that still need approve, reject, or adjust.',
-        },
-        {
-            'label': 'Proposals waiting',
-            'value': metrics['pending_proposals'],
-            'tone': 'warn' if metrics['pending_proposals'] else 'good',
-            'note': 'Contracts sitting in the proposal queue.',
-        },
-        {
-            'label': 'Open paper positions',
-            'value': metrics['open_paper_bets'],
-            'tone': 'warn' if metrics['open_paper_bets'] else 'neutral',
-            'note': 'Paper bets still exposed to settlement.',
-        },
-        {
-            'label': 'Closed paper bets',
-            'value': metrics['closed_paper_bets'],
-            'tone': 'good' if metrics['closed_paper_bets'] else 'neutral',
-            'note': 'Settled positions with an outcome to review.',
-        },
-    ]
-    if latest_detail is not None:
-        summary = latest_detail['summary']
-        items.append(
-            {
-                'label': 'Latest board setup',
-                'value': f"{summary['proposed_count']} priority / {summary['watch_count']} watch",
-                'tone': 'good' if summary['proposed_count'] else 'neutral',
-                'note': f"{summary['board_size']} markets across {summary['board_city_count']} cities.",
-            }
-        )
-    return items
 
 
 def _build_paper_summary(
@@ -313,26 +273,35 @@ def create_app(*, db_path: str | Path | None = None) -> FastAPI:
             },
         )
 
-    @app.get('/', response_class=HTMLResponse, name='dashboard')
-    def dashboard(request: Request) -> HTMLResponse:
+    def render_today_page(
+        request: Request,
+        *,
+        strategy_id: str | None,
+    ) -> HTMLResponse:
         snapshot = get_dashboard_snapshot(db_path=request.app.state.db_path)
-        latest_session = snapshot['latest_session']
-        latest_detail = (
-            get_strategy_detail(strategy_id=latest_session['strategy_id'], db_path=request.app.state.db_path)
-            if latest_session
-            else None
+        today_focus = get_today_snapshot(
+            reference_date_local=date.today(),
+            strategy_id=strategy_id,
+            db_path=request.app.state.db_path,
         )
         return render(
             request,
             template_name='dashboard.html',
-            page_title='Dashboard',
-            nav='dashboard',
+            page_title='Today',
+            nav='today',
             context={
                 **snapshot,
-                'latest_detail': latest_detail,
-                'attention_items': _build_dashboard_attention_items(snapshot, latest_detail),
+                'today_focus': today_focus,
             },
         )
+
+    @app.get('/', response_class=HTMLResponse, name='dashboard')
+    def dashboard(request: Request, strategy_id: str | None = Query(default=None)) -> HTMLResponse:
+        return render_today_page(request, strategy_id=strategy_id)
+
+    @app.get('/today', response_class=HTMLResponse, name='today_page')
+    def today_page(request: Request, strategy_id: str | None = Query(default=None)) -> HTMLResponse:
+        return render_today_page(request, strategy_id=strategy_id)
 
     @app.get('/board', response_class=HTMLResponse, name='latest_board')
     def latest_board(request: Request, strategy_id: str | None = Query(default=None)) -> HTMLResponse:

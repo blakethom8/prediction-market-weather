@@ -4,7 +4,8 @@ The first betting-platform UI is a local FastAPI app with server-rendered templa
 
 ## What It Includes
 
-- `/` dashboard for recent strategy sessions and paper-bet status
+- `/` today-first dashboard for the current day's board, recommendations, watchlist, passes, and proposal state
+- `/today` explicit alias for the same today-focused operator view
 - `/board` for the latest captured daily board
 - `/board/<YYYY-MM-DD>` for a specific strategy date
 - `/strategies/<strategy_id>` for strategy summary, proposals, review history, and linked paper bets
@@ -28,7 +29,7 @@ Bootstrap the database if needed:
 Generate at least one daily strategy package so the pages have real content:
 
 ```bash
-make daily-board -- --date 2026-03-23 --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."
+make daily-board -- --date 2026-03-23 --thesis "Scan the full board, then approve only the clearest weather edge."
 ```
 
 Start the app:
@@ -55,12 +56,14 @@ Recommended fresh-start sequence:
 ./scripts/setup_env.sh
 export WEATHER_WAREHOUSE_PATH="$PWD/data/warehouse/weather_markets.duckdb"
 make bootstrap
-make daily-board -- --date 2026-03-23 --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."
+make daily-board -- --date 2026-03-23 --thesis "Scan the full board, then approve only the clearest weather edge."
 make live-web
 ```
 
 Notes:
 - `make daily-board` creates a strategy session even if the board is empty for that date, so the operator console can still capture the day, approval status, and later review lineage.
+- The app now treats the current day as the main operator surface: start on `/` or `/today`, then drop into `/board` for the full captured strip or `/strategies/<strategy_id>` for deeper lineage.
+- Broad board scans remain the default. `research_focus_cities` can still be recorded as confidence anchors, but they should not narrow the live board unless `board_cities` is intentionally set.
 - `/healthz` now checks that the live tables and views required by the app are present, so it catches schema/view drift instead of reporting process-only health.
 - The web app remains intentionally server-rendered and local-first; use Telegram for push summaries and the FastAPI UI for board scanning, strategy review, paper bets, and post-trade review.
 

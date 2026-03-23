@@ -1,0 +1,35 @@
+{
+  "strategy_id": "strategy_51b0f5fcba42",
+  "strategy_date_local": "2026-03-23",
+  "board_count": 0,
+  "summary": {
+    "generated_at_utc": "2026-03-23T02:08:17.823348+00:00",
+    "research_focus_cities": [
+      "nyc",
+      "chi"
+    ],
+    "focus_cities": [
+      "nyc",
+      "chi"
+    ],
+    "thesis": "Compare the full daily board before approving paper bets.",
+    "board_scope": "all_markets",
+    "board_scope_label": "All available markets",
+    "board_size": 0,
+    "board_city_count": 0,
+    "board_city_ids": [],
+    "board_city_mix": [],
+    "approval_status": "pending_review",
+    "proposed_count": 0,
+    "watch_count": 0,
+    "pass_count": 0,
+    "top_candidates": [],
+    "proposed_bets": [],
+    "watchlist": [],
+    "passes": [],
+    "operating_mode": "paper-trading",
+    "proposal_count": 0
+  },
+  "board_rows": [],
+  "proposal_rows": []
+}

@@ -360,6 +360,39 @@ h3 {
   border-top: 1px solid var(--line);
 }
 
+.queue-list,
+.mini-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.queue-item,
+.focus-card,
+.mini-list-item {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 250, 241, 0.78);
+}
+
+.queue-item,
+.focus-card {
+  padding: 0.95rem 1rem;
+}
+
+.queue-topline,
+.mini-list-item {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+  align-items: start;
+}
+
+.queue-topline strong,
+.focus-card strong,
+.mini-list-meta span {
+  font-weight: 700;
+}
+
 .detail-label {
   display: block;
   margin-bottom: 0.35rem;
@@ -379,6 +412,24 @@ h3 {
 .detail-copy {
   margin: 0;
   line-height: 1.6;
+}
+
+.thesis-copy {
+  margin-bottom: 1rem;
+}
+
+.focus-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.8rem;
+}
+
+.focus-card p,
+.candidate-note,
+.mini-list-item p {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  line-height: 1.55;
 }
 
 .table-shell {
@@ -507,6 +558,12 @@ td a {
   padding: 1rem;
 }
 
+.emphasis-card {
+  background:
+    linear-gradient(180deg, rgba(11, 107, 111, 0.08), rgba(255, 250, 241, 0.92)),
+    var(--bg-panel);
+}
+
 .candidate-card p {
   margin: 0.25rem 0 0;
   color: var(--muted);
@@ -525,6 +582,18 @@ td a {
 .candidate-rank {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.mini-list-item {
+  padding: 0.9rem 1rem;
+}
+
+.mini-list-meta {
+  display: grid;
+  gap: 0.35rem;
+  text-align: right;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .stat-list {
@@ -713,5 +782,14 @@ pre {
 
   .stat-list dd {
     text-align: right;
+  }
+
+  .queue-topline,
+  .mini-list-item {
+    flex-direction: column;
+  }
+
+  .mini-list-meta {
+    text-align: left;
   }
 }

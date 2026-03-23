@@ -31,6 +31,141 @@ def _sum_numeric(rows: list[dict[str, Any]], key: str) -> float:
     return sum(float(row.get(key) or 0.0) for row in rows)
 
 
+def _bucket_sort_key(value: str | None) -> int:
+    mapping = {'priority': 0, 'watch': 1, 'pass': 2}
+    return mapping.get(value or '', 3)
+
+
+def _workflow_sort_key(value: str | None) -> int:
+    mapping = {
+        'pending_review': 0,
+        'adjustments_requested': 1,
+        'approved': 2,
+        'unproposed': 3,
+        'open': 4,
+        'closed': 5,
+        'rejected': 6,
+    }
+    return mapping.get(value or '', 7)
+
+
+def _display_slug(value: str | None, *, default: str) -> str:
+    if value in (None, ''):
+        return default
+    return str(value).replace('_', ' ')
+
+
+def _board_principle_label(session_context: dict[str, Any]) -> str:
+    principle = session_context.get('board_principle')
+    if principle == 'scan_all_available_markets_before_selecting_bets':
+        return 'Scan all available markets before isolating any single bet.'
+    return _display_slug(principle, default='Scan the full live board before approving any bet.').capitalize()
+
+
+def _annotate_operator_state(row: dict[str, Any]) -> dict[str, Any]:
+    bucket = row.get('candidate_bucket')
+    proposal_status = row.get('proposal_status')
+    paper_status = row.get('paper_bet_status')
+
+    if paper_status == 'open':
+        state = {
+            'operator_action': 'In paper book',
+            'operator_note': 'Already converted. Monitor exposure instead of reopening the contract.',
+            'operator_tone': 'good',
+            'is_available_candidate': False,
+            'is_trade_ready': False,
+        }
+    elif paper_status == 'closed':
+        state = {
+            'operator_action': 'Settled',
+            'operator_note': 'Closed position. Carry the lesson forward instead of trading the same snapshot again.',
+            'operator_tone': 'muted',
+            'is_available_candidate': False,
+            'is_trade_ready': False,
+        }
+    elif proposal_status == 'approved':
+        state = {
+            'operator_action': 'Approved to convert',
+            'operator_note': 'Cleared in review. Convert only if the live price still agrees with the thesis.',
+            'operator_tone': 'good',
+            'is_available_candidate': bucket in {'priority', 'watch'},
+            'is_trade_ready': bucket == 'priority',
+        }
+    elif proposal_status == 'adjustments_requested':
+        state = {
+            'operator_action': 'Needs adjustment',
+            'operator_note': 'Re-price or re-size before any paper conversion.',
+            'operator_tone': 'warn',
+            'is_available_candidate': bucket in {'priority', 'watch'},
+            'is_trade_ready': bucket == 'priority',
+        }
+    elif proposal_status == 'pending_review':
+        state = {
+            'operator_action': 'Review now',
+            'operator_note': 'Still waiting for an explicit operator decision.',
+            'operator_tone': 'warn',
+            'is_available_candidate': bucket in {'priority', 'watch'},
+            'is_trade_ready': bucket == 'priority',
+        }
+    elif proposal_status == 'rejected':
+        state = {
+            'operator_action': 'Rejected',
+            'operator_note': 'Explicit pass unless the market changes materially.',
+            'operator_tone': 'muted',
+            'is_available_candidate': False,
+            'is_trade_ready': False,
+        }
+    elif bucket == 'priority':
+        state = {
+            'operator_action': 'Ready to propose',
+            'operator_note': 'Priority edge on the broad board with no workflow state recorded yet.',
+            'operator_tone': 'good',
+            'is_available_candidate': True,
+            'is_trade_ready': True,
+        }
+    elif bucket == 'watch':
+        state = {
+            'operator_action': 'Watch only',
+            'operator_note': 'Interesting, but not yet clean enough to push.',
+            'operator_tone': 'warn',
+            'is_available_candidate': True,
+            'is_trade_ready': False,
+        }
+    elif bucket == 'pass':
+        state = {
+            'operator_action': 'Pass',
+            'operator_note': 'No action unless the next refresh changes the edge.',
+            'operator_tone': 'muted',
+            'is_available_candidate': False,
+            'is_trade_ready': False,
+        }
+    else:
+        state = {
+            'operator_action': 'Needs data',
+            'operator_note': 'Pricing or model inputs are incomplete.',
+            'operator_tone': 'neutral',
+            'is_available_candidate': False,
+            'is_trade_ready': False,
+        }
+
+    return {**row, **state}
+
+
+def _operator_row_sort_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    edge_vs_ask = row.get('edge_vs_ask')
+    candidate_rank = row.get('candidate_rank')
+    minutes_to_close = row.get('minutes_to_close')
+    return (
+        _bucket_sort_key(row.get('candidate_bucket')),
+        0 if row.get('is_trade_ready') else 1 if row.get('is_available_candidate') else 2,
+        _workflow_sort_key(row.get('workflow_status')),
+        -(float(edge_vs_ask) if edge_vs_ask is not None else -999.0),
+        int(minutes_to_close) if minutes_to_close is not None else 10**9,
+        int(candidate_rank) if candidate_rank is not None else 10**9,
+        row.get('market_ticker') or '',
+    )
+
+
 def _attach_board_workflow(
     *,
     board_rows: list[dict[str, Any]],
@@ -88,6 +223,117 @@ def _attach_board_workflow(
         )
 
     return enriched_rows
+
+
+def _build_strategy_points(*, session: dict[str, Any], summary: dict[str, Any]) -> list[dict[str, str]]:
+    selection_framework = session.get('selection_framework') or {}
+    research_focus = session.get('research_focus_cities') or []
+    return [
+        {
+            'label': 'Board principle',
+            'value': _board_principle_label(session.get('session_context') or {}),
+            'note': 'The live scan should stay broad even when a few cities anchor research.',
+        },
+        {
+            'label': 'Operating goal',
+            'value': selection_framework.get('goal') or 'Small repeatable daily edge.',
+            'note': 'Keep the day explainable and size-controlled.',
+        },
+        {
+            'label': 'Research anchors',
+            'value': ', '.join(research_focus) if research_focus else 'No specific anchors recorded.',
+            'note': 'Anchors guide review confidence. They do not narrow the board by default.',
+        },
+        {
+            'label': 'Board scope',
+            'value': f"{summary['board_scope_label']} across {summary['board_city_count']} cities.",
+            'note': f"{summary['board_size']} captured market rows on this run.",
+        },
+    ]
+
+
+def _build_operator_queue(*, session: dict[str, Any], summary: dict[str, Any]) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    top_candidate = summary.get('top_candidate')
+    top_market = top_candidate['market_ticker'] if top_candidate else 'the top-ranked name'
+
+    if session['approval_status'] == 'pending_review':
+        items.append(
+            {
+                'label': 'Make the strategy call',
+                'value': f"{summary['pending_proposals']} proposal(s) still need review.",
+                'note': f'Start with {top_market} and decide whether today has a real approval set.',
+                'tone': 'warn',
+            }
+        )
+    elif session['approval_status'] == 'adjustments_requested':
+        items.append(
+            {
+                'label': 'Rework the proposed prices',
+                'value': f"{summary['adjustment_queue_count']} name(s) are waiting on adjustments.",
+                'note': 'Re-check price discipline, size, and close-time risk before approving.',
+                'tone': 'warn',
+            }
+        )
+    elif session['approval_status'] == 'approved':
+        items.append(
+            {
+                'label': 'Use approved names deliberately',
+                'value': f"{summary['approved_waiting_conversion_count']} approved name(s) are not converted yet.",
+                'note': 'Convert only if the current board still supports the same edge.',
+                'tone': 'good' if summary['approved_waiting_conversion_count'] == 0 else 'warn',
+            }
+        )
+    elif session['approval_status'] == 'rejected':
+        items.append(
+            {
+                'label': 'Treat today as a pass unless the board moves',
+                'value': 'The session was rejected.',
+                'note': 'Keep the explanation and wait for a materially better slate instead of forcing action.',
+                'tone': 'muted',
+            }
+        )
+
+    if summary['available_candidate_count']:
+        items.append(
+            {
+                'label': 'Review the live candidate set',
+                'value': f"{summary['available_candidate_count']} available candidate(s) remain on the board.",
+                'note': f"{summary['priority_candidate_count']} are priority names and {summary['watch_count']} are on the watchlist.",
+                'tone': 'good' if summary['priority_candidate_count'] else 'neutral',
+            }
+        )
+
+    if summary['open_paper_bets']:
+        items.append(
+            {
+                'label': 'Watch the open paper book',
+                'value': f"{summary['open_paper_bets']} open paper bet(s) still track this strategy.",
+                'note': f"Current open notional is ${summary['open_paper_notional']:,.2f}.",
+                'tone': 'warn',
+            }
+        )
+
+    if summary['latest_lesson']:
+        items.append(
+            {
+                'label': 'Carry forward the latest lesson',
+                'value': summary['latest_lesson'],
+                'note': "Use the most recent closed-bet note as a constraint on today's sizing and selectivity.",
+                'tone': 'neutral',
+            }
+        )
+
+    if not items:
+        items.append(
+            {
+                'label': 'Low-action board',
+                'value': 'There is no active queue right now.',
+                'note': 'Keep the broad scan recorded, leave the passes explicit, and wait for a better refresh.',
+                'tone': 'neutral',
+            }
+        )
+    return items[:4]
 
 
 def _session_row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:
@@ -525,6 +771,7 @@ def get_strategy_detail(*, strategy_id: str, db_path: str | Path | None = None) 
         proposal_rows=proposal_rows,
         paper_bets=paper_bets,
     )
+    board_rows = [_annotate_operator_state(row) for row in board_rows]
 
     summary = summarize_strategy_board(
         board_rows=board_rows,
@@ -562,6 +809,41 @@ def get_strategy_detail(*, strategy_id: str, db_path: str | Path | None = None) 
         (row['lesson_summary'] for row in closed_paper_bets if row.get('lesson_summary')),
         None,
     )
+    priority_candidates = sorted(
+        [row for row in board_rows if row['candidate_bucket'] == 'priority' and row['is_available_candidate']],
+        key=_operator_row_sort_key,
+    )
+    available_candidates = sorted(
+        [row for row in board_rows if row['is_available_candidate']],
+        key=_operator_row_sort_key,
+    )
+    watchlist_rows = sorted(
+        [row for row in board_rows if row['candidate_bucket'] == 'watch'],
+        key=_operator_row_sort_key,
+    )
+    pass_rows = sorted(
+        [row for row in board_rows if row['candidate_bucket'] == 'pass'],
+        key=_operator_row_sort_key,
+    )
+    summary['priority_candidates'] = priority_candidates
+    summary['priority_candidate_count'] = len(priority_candidates)
+    summary['top_recommendations'] = priority_candidates[:3] if priority_candidates else available_candidates[:3]
+    summary['available_candidates'] = available_candidates
+    summary['available_candidate_count'] = len(available_candidates)
+    summary['watchlist_rows'] = watchlist_rows
+    summary['pass_rows'] = pass_rows
+    summary['adjustment_queue_count'] = len(
+        [row for row in board_rows if row.get('proposal_status') == 'adjustments_requested']
+    )
+    summary['approved_waiting_conversion_count'] = len(
+        [
+            row
+            for row in board_rows
+            if row.get('proposal_status') == 'approved' and row.get('paper_bet_status') is None
+        ]
+    )
+    summary['strategy_points'] = _build_strategy_points(session=session, summary=summary)
+    summary['operator_queue'] = _build_operator_queue(session=session, summary=summary)
 
     return {
         'session': session,
@@ -605,4 +887,51 @@ def get_dashboard_snapshot(*, db_path: str | Path | None = None) -> dict[str, An
             'open_paper_bets': counts[3],
             'closed_paper_bets': counts[4],
         },
+    }
+
+
+def get_today_snapshot(
+    *,
+    reference_date_local: date,
+    strategy_id: str | None = None,
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    today_sessions = list_strategy_sessions_for_date(
+        strategy_date_local=reference_date_local,
+        limit=10,
+        db_path=db_path,
+    )
+    selected_session = next(
+        (row for row in today_sessions if strategy_id is not None and row['strategy_id'] == strategy_id),
+        None,
+    )
+    if selected_session is None and today_sessions:
+        selected_session = today_sessions[0]
+
+    latest_sessions = list_strategy_sessions(limit=1, db_path=db_path)
+    latest_session = latest_sessions[0] if latest_sessions else None
+
+    today_detail = (
+        get_strategy_detail(strategy_id=selected_session['strategy_id'], db_path=db_path)
+        if selected_session
+        else None
+    )
+    fallback_detail = None
+    if today_detail is None and latest_session is not None:
+        fallback_detail = get_strategy_detail(strategy_id=latest_session['strategy_id'], db_path=db_path)
+
+    active_detail = today_detail or fallback_detail
+    active_session = selected_session or latest_session
+
+    return {
+        'reference_date_local': reference_date_local.isoformat(),
+        'today_sessions': today_sessions,
+        'today_session': selected_session,
+        'today_detail': today_detail,
+        'has_today_session': today_detail is not None,
+        'latest_session': latest_session,
+        'fallback_detail': fallback_detail,
+        'is_fallback_to_latest': today_detail is None and fallback_detail is not None,
+        'active_session': active_session,
+        'active_detail': active_detail,
     }
