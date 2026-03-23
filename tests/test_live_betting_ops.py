@@ -11,6 +11,7 @@ from weatherlab.ingest.contracts import ingest_contract
 from weatherlab.ingest.market_snapshots import ingest_market_snapshot
 from weatherlab.ingest.open_meteo import ingest_open_meteo_daily_payload
 from weatherlab.ingest.settlement_observations import ingest_settlement_observation
+from weatherlab.live.persistence import replace_strategy_proposals
 from weatherlab.ops.paper_bets import create_paper_bet, settle_paper_bet
 from weatherlab.ops.strategy import create_strategy_session, populate_strategy_market_board
 
@@ -91,14 +92,66 @@ class LiveBettingOpsTests(unittest.TestCase):
         )
         self.assertEqual(count, 1)
 
+        con = connect(db_path=self.db_path)
+        try:
+            board_row = con.execute(
+                '''
+                select
+                    board_entry_id,
+                    market_ticker,
+                    city_id,
+                    market_date_local,
+                    price_yes_ask,
+                    fair_prob,
+                    edge_vs_ask,
+                    candidate_rank,
+                    candidate_bucket
+                from ops.strategy_market_board
+                where strategy_id = ?
+                ''',
+                [strategy_id],
+            ).fetchone()
+        finally:
+            con.close()
+
+        persisted = replace_strategy_proposals(
+            strategy_id=strategy_id,
+            proposals=[
+                {
+                    'board_entry_id': board_row[0],
+                    'market_ticker': board_row[1],
+                    'city_id': board_row[2],
+                    'market_date_local': board_row[3].isoformat(),
+                    'proposal_status': 'pending_review',
+                    'side': 'BUY_YES',
+                    'market_price': board_row[4],
+                    'target_price': board_row[4],
+                    'target_quantity': 10,
+                    'fair_prob': board_row[5],
+                    'perceived_edge': board_row[6],
+                    'candidate_rank': board_row[7],
+                    'candidate_bucket': board_row[8],
+                    'forecast_snapshot_id': forecast_id,
+                    'strategy_variant': 'baseline',
+                    'scenario_label': 'live',
+                    'thesis': 'Compare all available daily temperature bets before selecting one.',
+                    'rationale_summary': 'Forecast runs warmer than market bucket.',
+                    'rationale_json': {'edge_vs_ask': board_row[6]},
+                    'context_json': {'source': 'test'},
+                }
+            ],
+            db_path=self.db_path,
+        )
+        proposal_id = persisted[0]['proposal_id']
+
         paper_bet_id = create_paper_bet(
             strategy_id=strategy_id,
             market_ticker='TEST_NYC_54',
             side='BUY_YES',
             limit_price=0.45,
             quantity=10,
-            rationale_summary='Forecast runs warmer than market bucket.',
-            forecast_snapshot_id=forecast_id,
+            proposal_id=proposal_id,
+            rationale_summary=None,
             db_path=self.db_path,
         )
         settle_paper_bet(
@@ -115,7 +168,27 @@ class LiveBettingOpsTests(unittest.TestCase):
                 [strategy_id],
             ).fetchone()
             bet_row = con.execute(
-                'select status, realized_pnl, outcome_label from ops.paper_bets where paper_bet_id = ?',
+                '''
+                select status, realized_pnl, outcome_label, proposal_id
+                from ops.paper_bets
+                where paper_bet_id = ?
+                ''',
+                [paper_bet_id],
+            ).fetchone()
+            proposal_row = con.execute(
+                '''
+                select proposal_status, linked_paper_bet_id
+                from ops.bet_proposals
+                where proposal_id = ?
+                ''',
+                [proposal_id],
+            ).fetchone()
+            review_row = con.execute(
+                '''
+                select kalshi_outcome_label, lesson_summary
+                from ops.paper_bet_reviews
+                where paper_bet_id = ?
+                ''',
                 [paper_bet_id],
             ).fetchone()
         finally:
@@ -126,6 +199,11 @@ class LiveBettingOpsTests(unittest.TestCase):
         self.assertEqual(bet_row[0], 'closed')
         self.assertEqual(bet_row[2], 'YES')
         self.assertAlmostEqual(bet_row[1], 5.5)
+        self.assertEqual(bet_row[3], proposal_id)
+        self.assertEqual(proposal_row[0], 'settled')
+        self.assertEqual(proposal_row[1], paper_bet_id)
+        self.assertEqual(review_row[0], 'YES')
+        self.assertEqual(review_row[1], 'Good edge capture on cool-day board.')
 
 
 if __name__ == '__main__':

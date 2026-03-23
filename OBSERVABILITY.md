@@ -57,11 +57,14 @@ Track learning loop:
 
 ## Suggested Artifacts
 
-### `decision_journal`
-One row per considered action.
+### `ops.bet_proposals`
+One row per proposed live bet, tied to a strategy session and captured board context.
+
+### `ops.bet_proposal_events`
+Append-only history for proposal approvals, adjustments, rejections, conversions, and settlement follow-up.
 
 ### `bet_rationale`
-JSON payload stored alongside each bet:
+Structured payload stored alongside each proposal / paper bet:
 - forecast summary
 - market summary
 - sibling-bucket summary
@@ -69,8 +72,8 @@ JSON payload stored alongside each bet:
 - confidence
 - action rule triggered
 
-### `postmortem_reviews`
-One row per closed trade with structured review fields.
+### `ops.paper_bet_reviews`
+One row per closed paper trade with realized outcome and structured lessons.
 
 ## Dashboard Concepts
 

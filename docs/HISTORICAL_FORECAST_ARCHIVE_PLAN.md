@@ -31,7 +31,7 @@ Reason:
 
 ## Implementation Order
 
-1. Lock NYC + Chicago as default focus cities.
+1. Lock NYC + Chicago as default historical-research focus cities.
 2. Build source-specific metadata and diagnostics around those cities.
 3. Implement the first real archived forecast ingestion path.
    - **Current implementation:** IEM archived Zone Forecast Products (`iem-zfp`) for NYC and Chicago
@@ -64,3 +64,5 @@ For NYC and Chicago, we want training rows whose forecast component can answer:
 - what was knowable before the Kalshi decision timestamp?
 
 Only once that is working cleanly should the same architecture be scaled to more cities.
+
+This focus-city plan is for historical archive rigor. The live betting board should still scan the full available market set by default.

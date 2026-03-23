@@ -56,7 +56,7 @@ Recommended first focus:
 - `nyc`
 - `chi`
 
-These are now the default focus cities unless overridden.
+These remain the default research-focus cities unless overridden. They are not a live-board filter.
 
 You can restrict historical forecast backfills with:
 ```bash
@@ -82,7 +82,7 @@ PYTHONPATH=src .venv/bin/python -c "from weatherlab.ingest.archived_nws_forecast
 ## Live / Paper Betting Architecture
 The project is now also centered around a day-of operating loop:
 - create a strategy session
-- compare the full daily market board across cities
+- compare the full daily market board across available cities/contracts
 - generate a daily strategy summary
 - review / approve / adjust the strategy
 - record paper bets with rationale
@@ -90,8 +90,13 @@ The project is now also centered around a day-of operating loop:
 
 Key tables/views:
 - `ops.strategy_sessions`
+- `ops.strategy_review_events`
 - `ops.strategy_market_board`
+- `ops.bet_proposals`
+- `ops.bet_proposal_events`
 - `ops.paper_bets`
+- `ops.paper_bet_reviews`
+- `ops.v_strategy_proposal_outcomes`
 - `features.v_daily_market_board`
 
 Live workflow code now lives under:
@@ -109,8 +114,10 @@ Betting platform system design doc:
 
 Generate a day-of package with:
 ```bash
-make daily-board -- --date 2026-03-23 --cities nyc,chi --thesis "Compare the full daily board before approving paper bets."
+make daily-board -- --date 2026-03-23 --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."
 ```
+
+The live board now scans all available markets by default. Use `--board-cities` only for targeted replays or debugging slices.
 
 Use city-level coverage diagnostics to see which cities currently have:
 - enough contracts/snapshots

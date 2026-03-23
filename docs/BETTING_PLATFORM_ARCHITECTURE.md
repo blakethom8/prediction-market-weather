@@ -20,7 +20,7 @@ The immediate mission is not fully autonomous trading.
 It is to create a trustworthy paper-trading and operator workflow that:
 
 1. builds the point-in-time board for the day
-2. compares opportunities across cities and contracts
+2. compares opportunities across all available cities and contracts
 3. proposes a strategy and candidate bets
 4. routes that strategy to Blake for review / approval / adjustment
 5. records the final paper decisions and later outcomes
@@ -75,8 +75,9 @@ Flow:
 3. Blake reviews proposed bets and passes
 4. Blake approves, edits, or rejects
 5. approval state is stored explicitly on the strategy session
-6. paper bets are recorded
-7. results are settled and reviewed later
+6. proposed bets are stored explicitly with review history
+7. paper bets are recorded from approved proposals or manual overrides
+8. results are settled and reviewed later
 
 Why this mode first:
 - high trust
@@ -109,9 +110,15 @@ Fields should include:
 - status
 - approval status
 - approval timestamp
+- last review timestamp
 - approval notes
-- focus cities
+- research-focus cities
+- board scope / filters
+- board coverage counts
 - thesis
+- strategy variant
+- scenario label
+- session context
 - selection framework
 - notes / assumptions
 
@@ -120,8 +127,10 @@ Represents the captured point-in-time board of all candidate bets.
 
 Fields should include:
 - market ticker
+- market title
 - city
 - market date
+- minutes to close
 - current prices
 - forecast snapshot reference
 - fair probability
@@ -129,15 +138,32 @@ Fields should include:
 - rank / bucket
 - board notes
 
-### Paper Bet
-Represents a simulated trade decision.
+### Bet Proposal
+Represents a proposed bet captured before approval and execution.
 
 Fields should include:
 - associated strategy session
+- originating board row
+- market / city / date
+- proposed side / price / size
+- perceived edge
+- candidate rank / bucket
+- strategy variant / scenario label
+- rationale summary + structured context
+- proposal status and event history
+
+### Paper Bet
+Represents a simulated trade decision after proposal/review.
+
+Fields should include:
+- associated strategy session
+- associated proposal
 - associated market
 - side
 - price
 - size
+- expected edge at entry
+- thesis snapshot at entry
 - rationale summary
 - forecast reference
 - status
@@ -177,8 +203,9 @@ The dashboard should become the main operator interface.
 Recommended screens:
 1. **Daily Board** — all candidate bets for the day
 2. **Strategy Summary** — thesis, proposed bets, and passes
-3. **Paper Bets / Executions** — open, closed, outcome, P&L
-4. **Review / Learning** — recurring mistakes, wins, missed opportunities
+3. **Proposals / Approvals** — pending, adjusted, rejected, converted
+4. **Paper Bets / Executions** — open, closed, outcome, P&L
+5. **Review / Learning** — recurring mistakes, wins, missed opportunities
 
 ### Phase 3: workflow automation
 After the report-first loop is reliable:

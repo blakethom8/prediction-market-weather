@@ -102,8 +102,8 @@ We should support three target families:
 The immediate operating model is:
 
 1. create a **strategy session** for the day
-2. populate a **market board** across the available cities/contracts
-3. generate a daily strategy summary artifact
+2. populate a **market board** across the available live cities/contracts
+3. persist explicit **bet proposals** with rationale and session context
 4. review / approve / adjust the strategy explicitly
 5. record a **paper bet** only after the day-level strategy is clear
 6. capture the outcome and retrospective review
@@ -119,6 +119,7 @@ That means storing:
 - exact forecast snapshot used
 - exact market snapshot used
 - board-level context (how it compared to the other available bets)
+- proposal / approval / adjustment / rejection lineage
 - feature summary
 - model version / signal version
 - rationale text or JSON
