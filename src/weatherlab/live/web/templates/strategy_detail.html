@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-panel">
+  <div>
+    <p class="eyebrow">Strategy summary</p>
+    <h1>{{ session.strategy_date_local }} session</h1>
+    <p class="hero-copy">{{ session.thesis }}</p>
+  </div>
+  <div class="hero-actions">
+    <span class="badge badge-{{ session.approval_status|status_tone }}">{{ session.approval_status|replace('_', ' ') }}</span>
+    <a class="button button-primary" href="{{ request.url_for('board_by_date', strategy_date=session.strategy_date_local) }}?strategy_id={{ session.strategy_id }}">Open board</a>
+  </div>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card">
+    <span class="metric-label">Strategy ID</span>
+    <strong class="metric-value metric-id">{{ session.strategy_id }}</strong>
+    <p>{{ session.strategy_variant }} / {{ session.scenario_label }}</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Research focus</span>
+    <strong class="metric-value">{{ session.research_focus_cities|join(', ') or 'none' }}</strong>
+    <p>Focus cities guide review but do not automatically filter the broad board.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Board coverage</span>
+    <strong class="metric-value">{{ session.board_market_count }} markets</strong>
+    <p>{{ session.board_city_count }} cities / {{ session.board_scope|replace('_', ' ') }}</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Proposals and paper bets</span>
+    <strong class="metric-value">{{ summary.proposal_count }} proposals</strong>
+    <p>{{ summary.paper_bet_count }} paper bets linked to this strategy.</p>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Proposal queue</p>
+      <h2>Ranked proposals</h2>
+    </div>
+  </div>
+  {% if proposal_rows %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Status</th>
+          <th>Price</th>
+          <th>Fair</th>
+          <th>Edge</th>
+          <th>Rationale</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for proposal in proposal_rows %}
+        <tr>
+          <td>
+            <strong>{{ proposal.market_ticker }}</strong>
+            <div class="cell-note">{{ proposal.city_id }} / rank {{ proposal.candidate_rank }}</div>
+          </td>
+          <td><span class="badge badge-{{ proposal.proposal_status|status_tone }}">{{ proposal.proposal_status|replace('_', ' ') }}</span></td>
+          <td>{{ proposal.target_price|cents_display }}</td>
+          <td>{{ proposal.fair_prob|probability_display }}</td>
+          <td>{{ proposal.perceived_edge|edge_display }}</td>
+          <td>{{ proposal.rationale_summary }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No proposals stored for this strategy session.</p>
+  {% endif %}
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Review history</p>
+        <h2>Strategy review events</h2>
+      </div>
+    </div>
+    {% if review_events %}
+    <div class="timeline">
+      {% for event in review_events %}
+      <article class="timeline-item">
+        <div class="timeline-topline">
+          <span class="badge badge-{{ event.resulting_approval_status|status_tone }}">{{ event.decision }}</span>
+          <time>{{ event.reviewed_at_utc|datetime_display }}</time>
+        </div>
+        <p>{{ event.resulting_approval_status|replace('_', ' ') }} by {{ event.actor }}</p>
+        {% if event.notes %}
+        <pre>{{ event.notes }}</pre>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-copy">No review events captured yet.</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Execution</p>
+        <h2>Paper bets</h2>
+      </div>
+      <a href="{{ request.url_for('paper_bets_page') }}?strategy_id={{ session.strategy_id }}">Filtered view</a>
+    </div>
+    {% if paper_bets %}
+    <div class="table-shell compact">
+      <table>
+        <thead>
+          <tr>
+            <th>Market</th>
+            <th>Status</th>
+            <th>Entry</th>
+            <th>P&amp;L</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for bet in paper_bets %}
+          <tr>
+            <td>{{ bet.market_ticker }}</td>
+            <td><span class="badge badge-{{ bet.status|status_tone }}">{{ bet.status }}</span></td>
+            <td>{{ bet.side }} @ {{ bet.limit_price|cents_display }}</td>
+            <td>{{ bet.realized_pnl|money_display }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="empty-copy">No paper bets linked to this strategy yet.</p>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}

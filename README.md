@@ -119,6 +119,21 @@ make daily-board -- --date 2026-03-23 --research-cities nyc,chi --thesis "Compar
 
 The live board now scans all available markets by default. Use `--board-cities` only for targeted replays or debugging slices.
 
+Run the first local web surface with:
+```bash
+make live-web
+```
+
+The app is FastAPI with server-rendered Jinja templates. Main routes:
+- `/` dashboard landing page
+- `/board` latest daily board
+- `/board/<YYYY-MM-DD>` board for a specific strategy date
+- `/strategies/<strategy_id>` strategy session summary
+- `/paper-bets` paper bet / review page
+
+More local run notes, including Tailscale-oriented usage, live in:
+- `docs/LOCAL_WEB_APP.md`
+
 Use city-level coverage diagnostics to see which cities currently have:
 - enough contracts/snapshots
 - official settlement coverage

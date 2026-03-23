@@ -30,3 +30,6 @@ run-eval:
 
 daily-board:
 	PYTHONPATH=src $(PYTHON) -m weatherlab.live.cli
+
+live-web:
+	PYTHONPATH=src $(PYTHON) -m weatherlab.live.web --host 0.0.0.0 --port 8000

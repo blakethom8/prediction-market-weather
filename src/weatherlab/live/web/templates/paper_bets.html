@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-panel">
+  <div>
+    <p class="eyebrow">Review surface</p>
+    <h1>Paper bets and outcomes</h1>
+    {% if strategy_filter %}
+    <p class="hero-copy">Showing only paper bets linked to strategy {{ strategy_filter }}.</p>
+    {% else %}
+    <p class="hero-copy">Track open paper positions, settled outcomes, and quick lessons before this turns into a richer mobile or Telegram workflow.</p>
+    {% endif %}
+  </div>
+  <div class="hero-actions">
+    <div class="stacked-stat">
+      <span>Open</span>
+      <strong>{{ open_bets|length }}</strong>
+    </div>
+    <div class="stacked-stat">
+      <span>Closed</span>
+      <strong>{{ closed_bets|length }}</strong>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Open positions</p>
+      <h2>Current paper exposure</h2>
+    </div>
+  </div>
+  {% if open_bets %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Strategy</th>
+          <th>Entry</th>
+          <th>Expected edge</th>
+          <th>Thesis</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for bet in open_bets %}
+        <tr>
+          <td>{{ bet.market_ticker }}</td>
+          <td><a href="{{ request.url_for('strategy_detail', strategy_id=bet.strategy_id) }}">{{ bet.strategy_date_local }}</a></td>
+          <td>{{ bet.side }} @ {{ bet.limit_price|cents_display }} x {{ bet.quantity }}</td>
+          <td>{{ bet.expected_edge|edge_display }}</td>
+          <td>{{ bet.thesis_at_entry|short_text(90) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No open paper bets right now.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Closed positions</p>
+      <h2>Settled outcomes and lessons</h2>
+    </div>
+  </div>
+  {% if closed_bets %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Outcome</th>
+          <th>P&amp;L</th>
+          <th>Closed</th>
+          <th>Review note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for bet in closed_bets %}
+        <tr>
+          <td>
+            <strong>{{ bet.market_ticker }}</strong>
+            <div class="cell-note">{{ bet.strategy_date_local }} / {{ bet.strategy_id }}</div>
+          </td>
+          <td>{{ bet.outcome_label or 'n/a' }}</td>
+          <td>{{ bet.realized_pnl|money_display }}</td>
+          <td>{{ bet.closed_at_utc|datetime_display }}</td>
+          <td>{{ bet.lesson_summary or 'n/a' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No closed paper bets yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

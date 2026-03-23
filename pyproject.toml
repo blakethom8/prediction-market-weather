@@ -9,10 +9,14 @@ description = "Weather-first research and trading infrastructure for prediction 
 requires-python = ">=3.11"
 dependencies = [
   "duckdb",
+  "fastapi",
+  "httpx",
+  "jinja2",
   "pandas",
   "pyyaml",
   "requests",
   "pydantic",
+  "uvicorn",
 ]
 
 [tool.setuptools]
@@ -21,3 +25,6 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["weatherlab*"]
+
+[tool.setuptools.package-data]
+"weatherlab.live.web" = ["templates/*.html", "static/*.css"]

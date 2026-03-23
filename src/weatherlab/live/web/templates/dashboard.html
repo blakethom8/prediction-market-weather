@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero-panel">
+  <div>
+    <p class="eyebrow">Local operator surface</p>
+    <h1>Betting workflow dashboard</h1>
+    {% if latest_session %}
+    <p class="hero-copy">Latest strategy session is {{ latest_session.strategy_date_local }} with {{ latest_session.board_market_count }} board rows and {{ latest_session.approval_status|replace('_', ' ') }} approval state.</p>
+    {% else %}
+    <p class="hero-copy">No strategy sessions exist yet. Generate one daily package locally, then use this app to review the board, proposals, and paper bets.</p>
+    {% endif %}
+  </div>
+  <div class="hero-actions">
+    {% if latest_session %}
+    <a class="button button-primary" href="{{ request.url_for('strategy_detail', strategy_id=latest_session.strategy_id) }}">Open latest strategy</a>
+    <a class="button" href="{{ request.url_for('latest_board') }}">View daily board</a>
+    {% else %}
+    <code class="inline-callout">make daily-board -- --date {{ today }} --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."</code>
+    {% endif %}
+  </div>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card">
+    <span class="metric-label">Strategy sessions</span>
+    <strong class="metric-value">{{ metrics.total_strategy_sessions }}</strong>
+    <p>Daily strategy containers captured in the live ops schema.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Pending strategy review</span>
+    <strong class="metric-value">{{ metrics.pending_strategy_reviews }}</strong>
+    <p>Sessions waiting on approve, reject, or adjust review.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Pending proposals</span>
+    <strong class="metric-value">{{ metrics.pending_proposals }}</strong>
+    <p>Bet proposals still sitting in review state.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Open paper bets</span>
+    <strong class="metric-value">{{ metrics.open_paper_bets }}</strong>
+    <p>Paper positions currently open in the execution log.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Closed paper bets</span>
+    <strong class="metric-value">{{ metrics.closed_paper_bets }}</strong>
+    <p>Settled paper bets with realized outcome history.</p>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Recent sessions</p>
+      <h2>Strategy sessions</h2>
+    </div>
+  </div>
+  {% if recent_sessions %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Thesis</th>
+          <th>Board</th>
+          <th>Review</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for session in recent_sessions %}
+        <tr>
+          <td>
+            <strong>{{ session.strategy_date_local }}</strong>
+            <div class="cell-note">{{ session.strategy_id }}</div>
+          </td>
+          <td>{{ session.thesis|short_text(110) }}</td>
+          <td>{{ session.board_market_count }} markets / {{ session.board_city_count }} cities</td>
+          <td><span class="badge badge-{{ session.approval_status|status_tone }}">{{ session.approval_status|replace('_', ' ') }}</span></td>
+          <td class="align-right">
+            <a href="{{ request.url_for('strategy_detail', strategy_id=session.strategy_id) }}">Summary</a>
+            <span class="pipe">/</span>
+            <a href="{{ request.url_for('board_by_date', strategy_date=session.strategy_date_local) }}?strategy_id={{ session.strategy_id }}">Board</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No strategy sessions yet. The dashboard will populate after the first `make daily-board` run.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Execution log</p>
+      <h2>Recent paper bets</h2>
+    </div>
+    <a href="{{ request.url_for('paper_bets_page') }}">Open review page</a>
+  </div>
+  {% if recent_paper_bets %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Status</th>
+          <th>Entry</th>
+          <th>Expected edge</th>
+          <th>Outcome</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for bet in recent_paper_bets %}
+        <tr>
+          <td>
+            <strong>{{ bet.market_ticker }}</strong>
+            <div class="cell-note">{{ bet.strategy_date_local }} / {{ bet.strategy_id }}</div>
+          </td>
+          <td><span class="badge badge-{{ bet.status|status_tone }}">{{ bet.status }}</span></td>
+          <td>{{ bet.side }} @ {{ bet.limit_price|cents_display }}</td>
+          <td>{{ bet.expected_edge|edge_display }}</td>
+          <td>
+            {% if bet.status == 'closed' %}
+            {{ bet.outcome_label or 'n/a' }} / {{ bet.realized_pnl|money_display }}
+            {% else %}
+            Open
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No paper bets recorded yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

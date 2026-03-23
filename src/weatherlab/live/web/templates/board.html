@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if detail %}
+<section class="hero-panel">
+  <div>
+    <p class="eyebrow">Daily board</p>
+    <h1>{{ detail.session.strategy_date_local }} board scan</h1>
+    <p class="hero-copy">{{ detail.session.thesis }}</p>
+  </div>
+  <div class="hero-actions">
+    <a class="button button-primary" href="{{ request.url_for('strategy_detail', strategy_id=detail.session.strategy_id) }}">Open strategy summary</a>
+    <span class="badge badge-{{ detail.session.approval_status|status_tone }}">{{ detail.session.approval_status|replace('_', ' ') }}</span>
+  </div>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card">
+    <span class="metric-label">Board scope</span>
+    <strong class="metric-value">{{ detail.summary.board_scope_label }}</strong>
+    <p>{{ detail.summary.board_size }} markets across {{ detail.summary.board_city_count }} cities.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Priority proposals</span>
+    <strong class="metric-value">{{ detail.summary.proposed_count }}</strong>
+    <p>Priority bucket rows converted into explicit proposals.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Watchlist</span>
+    <strong class="metric-value">{{ detail.summary.watch_count }}</strong>
+    <p>Close enough to monitor, not yet clean enough to push.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Passes</span>
+    <strong class="metric-value">{{ detail.summary.pass_count }}</strong>
+    <p>Board rows below the current execution threshold.</p>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Session choice</p>
+      <h2>Runs for {{ requested_date }}</h2>
+    </div>
+  </div>
+  {% if sessions_for_date %}
+  <div class="session-strip">
+    {% for session in sessions_for_date %}
+    <a class="session-chip {% if session.strategy_id == detail.session.strategy_id %}is-current{% endif %}" href="{{ request.url_for('board_by_date', strategy_date=session.strategy_date_local) }}?strategy_id={{ session.strategy_id }}">
+      <span>{{ session.strategy_variant }}</span>
+      <strong>{{ session.strategy_id }}</strong>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Top candidates</p>
+      <h2>Highest-ranked board rows</h2>
+    </div>
+  </div>
+  <div class="candidate-grid">
+    {% for row in detail.summary.top_candidates %}
+    <article class="candidate-card">
+      <div class="candidate-topline">
+        <span class="badge badge-{{ row.candidate_bucket|status_tone }}">{{ row.candidate_bucket }}</span>
+        <span class="candidate-rank">Rank {{ row.candidate_rank }}</span>
+      </div>
+      <h3>{{ row.market_ticker }}</h3>
+      <p>{{ row.market_title }}</p>
+      <dl class="stat-list">
+        <div><dt>City</dt><dd>{{ row.city_id }}</dd></div>
+        <div><dt>Ask</dt><dd>{{ row.price_yes_ask|cents_display }}</dd></div>
+        <div><dt>Fair</dt><dd>{{ row.fair_prob|probability_display }}</dd></div>
+        <div><dt>Edge</dt><dd>{{ row.edge_vs_ask|edge_display }}</dd></div>
+      </dl>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Full board</p>
+      <h2>Captured market rows</h2>
+    </div>
+  </div>
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Market</th>
+          <th>City</th>
+          <th>Ask</th>
+          <th>Fair</th>
+          <th>Edge</th>
+          <th>Close</th>
+          <th>Bucket</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in detail.board_rows %}
+        <tr>
+          <td>{{ row.candidate_rank }}</td>
+          <td>
+            <strong>{{ row.market_ticker }}</strong>
+            <div class="cell-note">{{ row.market_title }}</div>
+          </td>
+          <td>{{ row.city_id }}</td>
+          <td>{{ row.price_yes_ask|cents_display }}</td>
+          <td>{{ row.fair_prob|probability_display }}</td>
+          <td>{{ row.edge_vs_ask|edge_display }}</td>
+          <td>{{ row.minutes_to_close }} min</td>
+          <td><span class="badge badge-{{ row.candidate_bucket|status_tone }}">{{ row.candidate_bucket }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<section class="hero-panel">
+  <div>
+    <p class="eyebrow">Daily board</p>
+    <h1>No board captured yet</h1>
+    {% if requested_date %}
+    <p class="hero-copy">There is no strategy session stored for {{ requested_date }} yet.</p>
+    {% else %}
+    <p class="hero-copy">Generate the first daily strategy package locally, then this page will show the captured market board and rankings.</p>
+    {% endif %}
+  </div>
+  <div class="hero-actions">
+    <code class="inline-callout">make daily-board -- --date {{ today }} --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."</code>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ page_title }} | Prediction Market Weather</title>
+  <link rel="stylesheet" href="{{ request.url_for('static', path='app.css') }}" />
+</head>
+<body>
+  <div class="page-glow page-glow-a"></div>
+  <div class="page-glow page-glow-b"></div>
+  <header class="site-header">
+    <div>
+      <a class="brand" href="{{ request.url_for('dashboard') }}">Prediction Market Weather</a>
+      <p class="brand-subtitle">Forecast first. Compare the full board before isolating a bet.</p>
+    </div>
+    <nav class="site-nav">
+      <a href="{{ request.url_for('dashboard') }}" class="{% if nav == 'dashboard' %}is-active{% endif %}">Dashboard</a>
+      <a href="{{ request.url_for('latest_board') }}" class="{% if nav == 'board' %}is-active{% endif %}">Daily Board</a>
+      <a href="{{ request.url_for('paper_bets_page') }}" class="{% if nav == 'paper-bets' %}is-active{% endif %}">Paper Bets</a>
+    </nav>
+    <div class="header-status">
+      <span class="chip">DuckDB local</span>
+      {% if latest_session %}
+      <a class="chip chip-link" href="{{ request.url_for('strategy_detail', strategy_id=latest_session.strategy_id) }}">Latest {{ latest_session.strategy_date_local }}</a>
+      {% else %}
+      <span class="chip chip-muted">No sessions yet</span>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="page-shell">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
