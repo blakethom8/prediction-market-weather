@@ -134,6 +134,17 @@ The app is FastAPI with server-rendered Jinja templates. Main routes:
 More local run notes, including Tailscale-oriented usage, live in:
 - `docs/LOCAL_WEB_APP.md`
 
+Recommended local boot sequence for a fresh DuckDB file:
+```bash
+./scripts/setup_env.sh
+export WEATHER_WAREHOUSE_PATH="$PWD/data/warehouse/weather_markets.duckdb"
+make bootstrap
+make daily-board -- --date 2026-03-23 --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."
+make live-web
+```
+
+If there is not yet any market data for that strategy date, the daily package still creates a reviewable strategy session and the web app renders the empty-state board, strategy, paper-bet, and health pages cleanly.
+
 Use city-level coverage diagnostics to see which cities currently have:
 - enough contracts/snapshots
 - official settlement coverage

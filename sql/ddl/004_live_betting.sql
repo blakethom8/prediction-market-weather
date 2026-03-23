@@ -42,7 +42,6 @@ create table if not exists ops.strategy_market_board (
     city_id varchar,
     market_date_local date,
     forecast_snapshot_id varchar,
-    settlement_source varchar,
     minutes_to_close integer,
     price_yes_mid double,
     price_yes_ask double,
@@ -57,6 +56,7 @@ create table if not exists ops.strategy_market_board (
 
 alter table ops.strategy_market_board add column if not exists market_title varchar;
 alter table ops.strategy_market_board add column if not exists minutes_to_close integer;
+alter table ops.strategy_market_board drop column if exists settlement_source;
 
 create table if not exists ops.strategy_review_events (
     strategy_review_id varchar primary key,

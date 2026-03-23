@@ -1,4 +1,8 @@
-"""Compatibility wrapper for the package-owned signal module."""
+"""Compatibility wrapper for the package-owned signal module.
+
+This lives under a non-stdlib-clashing name so repo-root app launches do not
+shadow Python's built-in ``signal`` module.
+"""
 
 from pathlib import Path
 import sys

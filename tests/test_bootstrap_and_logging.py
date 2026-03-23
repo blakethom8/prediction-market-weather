@@ -26,6 +26,10 @@ class BootstrapAndLoggingTests(unittest.TestCase):
                     "select table_schema || '.' || table_name from information_schema.tables"
                 ).fetchall()
             }
+            board_columns = {
+                row[1]
+                for row in con.execute("pragma table_info('ops.strategy_market_board')").fetchall()
+            }
         finally:
             con.close()
 
@@ -38,6 +42,7 @@ class BootstrapAndLoggingTests(unittest.TestCase):
         self.assertIn("ops.bet_proposal_events", tables)
         self.assertIn("ops.paper_bets", tables)
         self.assertIn("ops.paper_bet_reviews", tables)
+        self.assertNotIn("settlement_source", board_columns)
 
     def test_decision_logger_writes_row(self):
         rationale = build_rationale(

@@ -26,6 +26,7 @@ class LiveWebAppTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmpdir.name) / 'live_web.duckdb'
+        self.artifacts_dir = Path(self.tmpdir.name) / 'artifacts'
         bootstrap(db_path=self.db_path)
         load_all_registries(db_path=self.db_path)
         self._seed_board()
@@ -33,6 +34,7 @@ class LiveWebAppTests(unittest.TestCase):
             strategy_date_local=date(2026, 3, 23),
             thesis='Compare the full daily board before approving paper bets.',
             research_focus_cities=['nyc', 'chi'],
+            artifacts_dir=self.artifacts_dir,
             db_path=self.db_path,
         )
         apply_strategy_review(
@@ -41,12 +43,13 @@ class LiveWebAppTests(unittest.TestCase):
             notes={'reason': 'Keep size small until near close.'},
             db_path=self.db_path,
         )
-        proposal_id = self.package['proposal_rows'][0]['proposal_id']
+        self.primary_proposal = self.package['proposal_rows'][0]
+        proposal_id = self.primary_proposal['proposal_id']
         paper_bet_id = create_paper_bet(
             strategy_id=self.package['strategy_id'],
-            market_ticker=self.package['proposal_rows'][0]['market_ticker'],
+            market_ticker=self.primary_proposal['market_ticker'],
             side='BUY_YES',
-            limit_price=self.package['proposal_rows'][0]['target_price'],
+            limit_price=self.primary_proposal['target_price'],
             quantity=10,
             proposal_id=proposal_id,
             db_path=self.db_path,
@@ -154,13 +157,13 @@ class LiveWebAppTests(unittest.TestCase):
         self.assertEqual(dashboard.status_code, 200)
         self.assertIn('Betting workflow dashboard', dashboard.text)
         self.assertIn(self.package['strategy_id'], dashboard.text)
-        self.assertIn('TEST_NYC_54', dashboard.text)
+        self.assertIn(self.primary_proposal['market_ticker'], dashboard.text)
 
         strategy = self.client.get(f"/strategies/{self.package['strategy_id']}")
         self.assertEqual(strategy.status_code, 200)
         self.assertIn('Ranked proposals', strategy.text)
         self.assertIn('Keep size small until near close.', strategy.text)
-        self.assertIn('TEST_NYC_54', strategy.text)
+        self.assertIn(self.primary_proposal['market_ticker'], strategy.text)
 
     def test_board_and_paper_bet_routes_render_seeded_data(self):
         board = self.client.get('/board')
@@ -177,6 +180,50 @@ class LiveWebAppTests(unittest.TestCase):
         self.assertEqual(paper_bets.status_code, 200)
         self.assertIn('Settled outcomes and lessons', paper_bets.text)
         self.assertIn('Good edge capture after broad-board comparison.', paper_bets.text)
+
+        healthz = self.client.get('/healthz')
+        self.assertEqual(healthz.status_code, 200)
+        self.assertEqual(healthz.json(), {'status': 'ok'})
+
+
+@unittest.skipUnless(TestClient is not None and create_app is not None, 'fastapi test dependencies are not installed')
+class FreshBootstrapLiveWebAppTests(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmpdir.name) / 'live_web_fresh.duckdb'
+        self.artifacts_dir = Path(self.tmpdir.name) / 'artifacts'
+        bootstrap(db_path=self.db_path)
+        self.package = generate_daily_strategy_package(
+            strategy_date_local=date(2026, 3, 23),
+            thesis='Create a review container even when the live board has no captured rows yet.',
+            research_focus_cities=['nyc', 'chi'],
+            artifacts_dir=self.artifacts_dir,
+            db_path=self.db_path,
+        )
+        self.client = TestClient(create_app(db_path=self.db_path))
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def test_fresh_bootstrap_pages_render_without_seeded_market_data(self):
+        dashboard = self.client.get('/')
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn('Betting workflow dashboard', dashboard.text)
+        self.assertIn(self.package['strategy_id'], dashboard.text)
+
+        board = self.client.get('/board')
+        self.assertEqual(board.status_code, 200)
+        self.assertIn('Captured market rows', board.text)
+        self.assertIn('no market rows were captured', board.text.lower())
+
+        strategy = self.client.get(f"/strategies/{self.package['strategy_id']}")
+        self.assertEqual(strategy.status_code, 200)
+        self.assertIn('Proposal to review chain', strategy.text)
+        self.assertIn('No proposals stored for this strategy session.', strategy.text)
+
+        paper_bets = self.client.get('/paper-bets')
+        self.assertEqual(paper_bets.status_code, 200)
+        self.assertIn('No open paper bets right now.', paper_bets.text)
 
         healthz = self.client.get('/healthz')
         self.assertEqual(healthz.status_code, 200)

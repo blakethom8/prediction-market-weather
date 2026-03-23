@@ -63,6 +63,7 @@
       <h2>Highest-ranked board rows</h2>
     </div>
   </div>
+  {% if detail.summary.top_candidates %}
   <div class="candidate-grid">
     {% for row in detail.summary.top_candidates %}
     <article class="candidate-card">
@@ -81,6 +82,9 @@
     </article>
     {% endfor %}
   </div>
+  {% else %}
+  <p class="empty-copy">No priority or watch candidates surfaced from this board scan yet. Keep the session, record the pass, and revisit after the next data refresh if needed.</p>
+  {% endif %}
 </section>
 
 <section class="panel">
@@ -90,6 +94,7 @@
       <h2>Captured market rows</h2>
     </div>
   </div>
+  {% if detail.board_rows %}
   <div class="table-shell">
     <table>
       <thead>
@@ -123,6 +128,9 @@
       </tbody>
     </table>
   </div>
+  {% else %}
+  <p class="empty-copy">This strategy session exists, but no market rows were captured for the selected date and filters yet.</p>
+  {% endif %}
 </section>
 {% else %}
 <section class="hero-panel">

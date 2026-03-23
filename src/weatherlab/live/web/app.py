@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ...build.bootstrap import bootstrap
+from ...db import connect
 from ..queries import (
     get_dashboard_snapshot,
     get_latest_strategy_id,
@@ -107,9 +108,45 @@ templates.env.filters['status_tone'] = _status_tone
 templates.env.filters['short_text'] = _short_text
 
 
+def _assert_live_schema_ready(*, db_path: str | Path | None = None) -> None:
+    con = connect(read_only=True, db_path=db_path)
+    try:
+        required_objects = {
+            ('ops', 'strategy_sessions', 'BASE TABLE'),
+            ('ops', 'strategy_market_board', 'BASE TABLE'),
+            ('ops', 'bet_proposals', 'BASE TABLE'),
+            ('ops', 'paper_bets', 'BASE TABLE'),
+            ('features', 'v_daily_market_board', 'VIEW'),
+            ('ops', 'v_strategy_proposal_outcomes', 'VIEW'),
+        }
+        rows = con.execute(
+            '''
+            select table_schema, table_name, table_type
+            from information_schema.tables
+            where (table_schema, table_name) in (
+                ('ops', 'strategy_sessions'),
+                ('ops', 'strategy_market_board'),
+                ('ops', 'bet_proposals'),
+                ('ops', 'paper_bets'),
+                ('features', 'v_daily_market_board'),
+                ('ops', 'v_strategy_proposal_outcomes')
+            )
+            '''
+        ).fetchall()
+    finally:
+        con.close()
+
+    found_objects = {(row[0], row[1], row[2]) for row in rows}
+    missing = sorted(required_objects - found_objects)
+    if missing:
+        missing_labels = ', '.join(f'{schema}.{name} ({kind})' for schema, name, kind in missing)
+        raise RuntimeError(f'Live schema is missing required objects: {missing_labels}')
+
+
 def create_app(*, db_path: str | Path | None = None) -> FastAPI:
     resolved_db_path = Path(db_path).expanduser() if db_path else None
     bootstrap(db_path=resolved_db_path)
+    _assert_live_schema_ready(db_path=resolved_db_path)
 
     app = FastAPI(title='Prediction Market Weather', docs_url=None, redoc_url=None)
     app.state.db_path = resolved_db_path
@@ -244,7 +281,11 @@ def create_app(*, db_path: str | Path | None = None) -> FastAPI:
         )
 
     @app.get('/healthz', response_class=JSONResponse, name='healthz')
-    def healthz() -> JSONResponse:
+    def healthz(request: Request) -> JSONResponse:
+        try:
+            _assert_live_schema_ready(db_path=request.app.state.db_path)
+        except RuntimeError as exc:
+            return JSONResponse({'status': 'error', 'detail': str(exc)}, status_code=503)
         return JSONResponse({'status': 'ok'})
 
     return app

@@ -21,7 +21,6 @@ select
     tr.market_date_local,
     tr.minutes_to_close,
     tr.latest_forecast_snapshot_id as forecast_snapshot_id,
-    tr.settlement_source,
     tr.price_yes_mid,
     tr.price_yes_ask,
     tr.price_yes_bid,

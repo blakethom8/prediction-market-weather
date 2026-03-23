@@ -49,6 +49,21 @@ If your DuckDB warehouse lives somewhere else, set:
 export WEATHER_WAREHOUSE_PATH=/path/to/weather_markets.duckdb
 ```
 
+Recommended fresh-start sequence:
+
+```bash
+./scripts/setup_env.sh
+export WEATHER_WAREHOUSE_PATH="$PWD/data/warehouse/weather_markets.duckdb"
+make bootstrap
+make daily-board -- --date 2026-03-23 --research-cities nyc,chi --thesis "Compare the full daily board before approving paper bets."
+make live-web
+```
+
+Notes:
+- `make daily-board` creates a strategy session even if the board is empty for that date, so the operator console can still capture the day, approval status, and later review lineage.
+- `/healthz` now checks that the live tables and views required by the app are present, so it catches schema/view drift instead of reporting process-only health.
+- The web app remains intentionally server-rendered and local-first; use Telegram for push summaries and the FastAPI UI for board scanning, strategy review, paper bets, and post-trade review.
+
 ## Local/Tailscale Notes
 
 - Serving on `0.0.0.0` lets the Mac mini expose the app over the Tailscale IP or MagicDNS name.

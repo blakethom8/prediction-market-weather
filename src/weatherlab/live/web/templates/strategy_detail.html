@@ -78,6 +78,59 @@
   {% endif %}
 </section>
 
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Lineage</p>
+      <h2>Proposal to review chain</h2>
+    </div>
+  </div>
+  {% if proposal_outcomes %}
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr>
+          <th>Market</th>
+          <th>Proposal</th>
+          <th>Paper bet</th>
+          <th>Outcome</th>
+          <th>Lesson</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for outcome in proposal_outcomes %}
+        <tr>
+          <td>
+            <strong>{{ outcome.market_ticker }}</strong>
+            <div class="cell-note">{{ outcome.city_id }} / {{ outcome.strategy_variant }} / {{ outcome.scenario_label }}</div>
+          </td>
+          <td><span class="badge badge-{{ outcome.proposal_status|status_tone }}">{{ outcome.proposal_status|replace('_', ' ') }}</span></td>
+          <td>
+            {% if outcome.paper_bet_id %}
+            {{ outcome.paper_bet_status or 'linked' }}
+            <div class="cell-note">{{ outcome.paper_bet_id }}</div>
+            {% else %}
+            Not converted
+            {% endif %}
+          </td>
+          <td>
+            {% if outcome.kalshi_outcome_label %}
+            {{ outcome.kalshi_outcome_label }} / {{ outcome.realized_pnl|money_display }}
+            {% else %}
+            n/a
+            {% endif %}
+          </td>
+          <td>{{ outcome.lesson_summary or outcome.rationale_summary|short_text(100) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-copy">No proposal lineage has been captured for this strategy yet.</p>
+  {% endif %}
+</section>
+
 <section class="panel-grid">
   <article class="panel">
     <div class="panel-header">

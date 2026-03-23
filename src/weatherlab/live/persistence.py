@@ -293,7 +293,7 @@ def populate_strategy_market_board(
             f'''
             insert into ops.strategy_market_board (
                 board_entry_id, strategy_id, market_ticker, market_title, captured_at_utc,
-                city_id, market_date_local, forecast_snapshot_id, settlement_source,
+                city_id, market_date_local, forecast_snapshot_id,
                 minutes_to_close, price_yes_mid, price_yes_ask, price_yes_bid,
                 fair_prob, edge_vs_mid, edge_vs_ask,
                 candidate_rank, candidate_bucket, board_notes_json
@@ -307,7 +307,6 @@ def populate_strategy_market_board(
                 city_id,
                 market_date_local,
                 forecast_snapshot_id,
-                settlement_source,
                 minutes_to_close,
                 price_yes_mid,
                 price_yes_ask,
