@@ -6,21 +6,72 @@
     <p class="eyebrow">Review surface</p>
     <h1>Paper bets and outcomes</h1>
     {% if strategy_filter %}
-    <p class="hero-copy">Showing only paper bets linked to strategy {{ strategy_filter }}.</p>
+    <p class="hero-copy">Showing only paper bets linked to strategy {{ strategy_filter }} so you can review execution and outcomes in one place.</p>
     {% else %}
-    <p class="hero-copy">Track open paper positions, settled outcomes, and quick lessons before this turns into a richer mobile or Telegram workflow.</p>
+    <p class="hero-copy">Review open paper exposure first, then scan closed outcomes for lessons that should feed back into tomorrow's board and approval decisions.</p>
     {% endif %}
+    <div class="chip-row">
+      <span class="chip">{{ open_bets|length }} open</span>
+      <span class="chip">{{ closed_bets|length }} closed</span>
+      {% if strategy_filter %}
+      <span class="chip">Filtered strategy</span>
+      {% endif %}
+    </div>
   </div>
   <div class="hero-actions">
     <div class="stacked-stat">
-      <span>Open</span>
-      <strong>{{ open_bets|length }}</strong>
+      <span>Open notional</span>
+      <strong>{{ paper_summary.open_notional|money_display }}</strong>
     </div>
     <div class="stacked-stat">
-      <span>Closed</span>
-      <strong>{{ closed_bets|length }}</strong>
+      <span>Closed P&amp;L</span>
+      <strong>{{ paper_summary.closed_realized_pnl|money_display }}</strong>
     </div>
   </div>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card">
+    <span class="metric-label">Open positions</span>
+    <strong class="metric-value">{{ open_bets|length }}</strong>
+    <p>Paper bets still exposed to settlement.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Average open edge</span>
+    <strong class="metric-value">{{ paper_summary.average_open_expected_edge|edge_display }}</strong>
+    <p>Mean expected edge across currently open paper bets.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Closed positions</span>
+    <strong class="metric-value">{{ closed_bets|length }}</strong>
+    <p>Settled paper bets with realized results.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Win / loss</span>
+    <strong class="metric-value">{{ paper_summary.winning_bets }} / {{ paper_summary.losing_bets }}</strong>
+    <p>Closed bets with positive versus negative realized P&amp;L.</p>
+  </article>
+  <article class="metric-card">
+    <span class="metric-label">Latest lesson</span>
+    <strong class="metric-value metric-id">{{ paper_summary.latest_lesson or 'n/a' }}</strong>
+    <p>Most recent review note captured on a settled paper bet.</p>
+  </article>
+</section>
+
+<section class="panel panel-accent">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">Operator cue</p>
+      <h2>Where to spend attention</h2>
+    </div>
+  </div>
+  {% if open_bets %}
+  <p class="panel-copy">Start with the open book. Confirm the remaining exposure, make sure each position still fits the strategy thesis, and then work backward into any lessons from recently closed bets.</p>
+  {% elif closed_bets %}
+  <p class="panel-copy">There is no open paper exposure right now. This page is now mainly a lesson-review surface: scan the outcomes, identify what repeated, and feed it back into the next approval cycle.</p>
+  {% else %}
+  <p class="panel-copy">No paper bets have been recorded yet. Once proposals are converted, this page becomes the execution and learning log for the operator workflow.</p>
+  {% endif %}
 </section>
 
 <section class="panel">
@@ -38,6 +89,7 @@
           <th>Market</th>
           <th>Strategy</th>
           <th>Entry</th>
+          <th>Exposure</th>
           <th>Expected edge</th>
           <th>Thesis</th>
         </tr>
@@ -45,11 +97,15 @@
       <tbody>
         {% for bet in open_bets %}
         <tr>
-          <td>{{ bet.market_ticker }}</td>
-          <td><a href="{{ request.url_for('strategy_detail', strategy_id=bet.strategy_id) }}">{{ bet.strategy_date_local }}</a></td>
-          <td>{{ bet.side }} @ {{ bet.limit_price|cents_display }} x {{ bet.quantity }}</td>
-          <td>{{ bet.expected_edge|edge_display }}</td>
-          <td>{{ bet.thesis_at_entry|short_text(90) }}</td>
+          <td data-label="Market">
+            <strong>{{ bet.market_ticker }}</strong>
+            <div class="cell-note">{{ bet.paper_bet_id }}</div>
+          </td>
+          <td data-label="Strategy"><a href="{{ request.url_for('strategy_detail', strategy_id=bet.strategy_id) }}">{{ bet.strategy_date_local }}</a></td>
+          <td data-label="Entry">{{ bet.side|status_label }} @ {{ bet.limit_price|cents_display }} x {{ bet.quantity }}</td>
+          <td data-label="Exposure">{{ bet.notional_dollars|money_display }}</td>
+          <td data-label="Expected edge">{{ bet.expected_edge|edge_display }}</td>
+          <td data-label="Thesis">{{ bet.thesis_at_entry|short_text(90) }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -73,6 +129,7 @@
       <thead>
         <tr>
           <th>Market</th>
+          <th>Strategy</th>
           <th>Outcome</th>
           <th>P&amp;L</th>
           <th>Closed</th>
@@ -82,14 +139,15 @@
       <tbody>
         {% for bet in closed_bets %}
         <tr>
-          <td>
+          <td data-label="Market">
             <strong>{{ bet.market_ticker }}</strong>
-            <div class="cell-note">{{ bet.strategy_date_local }} / {{ bet.strategy_id }}</div>
+            <div class="cell-note">{{ bet.paper_bet_id }}</div>
           </td>
-          <td>{{ bet.outcome_label or 'n/a' }}</td>
-          <td>{{ bet.realized_pnl|money_display }}</td>
-          <td>{{ bet.closed_at_utc|datetime_display }}</td>
-          <td>{{ bet.lesson_summary or 'n/a' }}</td>
+          <td data-label="Strategy"><a href="{{ request.url_for('strategy_detail', strategy_id=bet.strategy_id) }}">{{ bet.strategy_date_local }}</a></td>
+          <td data-label="Outcome">{{ bet.outcome_label or 'n/a' }}</td>
+          <td data-label="P&amp;L">{{ bet.realized_pnl|money_display }}</td>
+          <td data-label="Closed">{{ bet.closed_at_utc|datetime_display }}</td>
+          <td data-label="Review note">{{ bet.lesson_summary or 'n/a' }}</td>
         </tr>
         {% endfor %}
       </tbody>

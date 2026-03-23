@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 import json
 from datetime import date
 from pathlib import Path
@@ -24,6 +25,69 @@ def _serialize_value(value: Any) -> Any:
     if hasattr(value, 'isoformat'):
         return value.isoformat()
     return value
+
+
+def _sum_numeric(rows: list[dict[str, Any]], key: str) -> float:
+    return sum(float(row.get(key) or 0.0) for row in rows)
+
+
+def _attach_board_workflow(
+    *,
+    board_rows: list[dict[str, Any]],
+    proposal_rows: list[dict[str, Any]],
+    paper_bets: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    proposals_by_entry_id = {
+        row['board_entry_id']: row for row in proposal_rows if row.get('board_entry_id')
+    }
+    proposals_by_market: dict[str, list[dict[str, Any]]] = {}
+    for proposal in proposal_rows:
+        proposals_by_market.setdefault(proposal['market_ticker'], []).append(proposal)
+
+    paper_bets_by_proposal_id = {
+        row['proposal_id']: row for row in paper_bets if row.get('proposal_id')
+    }
+    paper_bets_by_market: dict[str, list[dict[str, Any]]] = {}
+    for bet in paper_bets:
+        paper_bets_by_market.setdefault(bet['market_ticker'], []).append(bet)
+
+    enriched_rows: list[dict[str, Any]] = []
+    for row in board_rows:
+        proposal = proposals_by_entry_id.get(row['board_entry_id'])
+        if proposal is None:
+            market_matches = proposals_by_market.get(row['market_ticker'], [])
+            proposal = market_matches[0] if market_matches else None
+
+        paper_bet = None
+        if proposal is not None:
+            paper_bet = paper_bets_by_proposal_id.get(proposal['proposal_id'])
+        if paper_bet is None:
+            market_matches = paper_bets_by_market.get(row['market_ticker'], [])
+            paper_bet = market_matches[0] if market_matches else None
+
+        enriched_rows.append(
+            {
+                **row,
+                'proposal_id': proposal['proposal_id'] if proposal else None,
+                'proposal_status': proposal['proposal_status'] if proposal else None,
+                'proposal_side': proposal['side'] if proposal else None,
+                'proposal_target_price': proposal['target_price'] if proposal else None,
+                'linked_paper_bet_id': (
+                    paper_bet['paper_bet_id']
+                    if paper_bet
+                    else (proposal['linked_paper_bet_id'] if proposal else None)
+                ),
+                'paper_bet_status': paper_bet['status'] if paper_bet else None,
+                'paper_bet_side': paper_bet['side'] if paper_bet else None,
+                'workflow_status': (
+                    paper_bet['status']
+                    if paper_bet
+                    else (proposal['proposal_status'] if proposal else 'unproposed')
+                ),
+            }
+        )
+
+    return enriched_rows
 
 
 def _session_row_to_dict(row: tuple[Any, ...]) -> dict[str, Any]:
@@ -429,6 +493,38 @@ def get_strategy_detail(*, strategy_id: str, db_path: str | Path | None = None) 
     paper_bets = list_paper_bets(strategy_id=strategy_id, db_path=db_path)
     review_events = list_strategy_review_events(strategy_id=strategy_id, db_path=db_path)
     proposal_outcomes = list_strategy_proposal_outcomes(strategy_id=strategy_id, db_path=db_path)
+    proposal_outcomes_by_id = {row['proposal_id']: row for row in proposal_outcomes}
+    proposal_rows = [
+        {
+            **row,
+            'paper_bet_id': (
+                proposal_outcomes_by_id[row['proposal_id']]['paper_bet_id']
+                if row['proposal_id'] in proposal_outcomes_by_id
+                else row.get('linked_paper_bet_id')
+            ),
+            'paper_bet_status': (
+                proposal_outcomes_by_id[row['proposal_id']]['paper_bet_status']
+                if row['proposal_id'] in proposal_outcomes_by_id
+                else None
+            ),
+            'realized_pnl': (
+                proposal_outcomes_by_id[row['proposal_id']]['realized_pnl']
+                if row['proposal_id'] in proposal_outcomes_by_id
+                else None
+            ),
+            'outcome_label': (
+                proposal_outcomes_by_id[row['proposal_id']]['kalshi_outcome_label']
+                if row['proposal_id'] in proposal_outcomes_by_id
+                else None
+            ),
+        }
+        for row in proposal_rows
+    ]
+    board_rows = _attach_board_workflow(
+        board_rows=board_rows,
+        proposal_rows=proposal_rows,
+        paper_bets=paper_bets,
+    )
 
     summary = summarize_strategy_board(
         board_rows=board_rows,
@@ -436,9 +532,36 @@ def get_strategy_detail(*, strategy_id: str, db_path: str | Path | None = None) 
         thesis=session['thesis'],
         board_scope=session['board_scope'],
     )
+    proposal_status_counts = Counter(row['proposal_status'] or 'unknown' for row in proposal_rows)
+    paper_status_counts = Counter(row['status'] or 'unknown' for row in paper_bets)
+    open_paper_bets = [row for row in paper_bets if row['status'] == 'open']
+    closed_paper_bets = [row for row in paper_bets if row['status'] == 'closed']
+    board_rows_with_edge = [row for row in board_rows if row.get('edge_vs_ask') is not None]
+    board_rows_with_close = [row for row in board_rows if row.get('minutes_to_close') is not None]
     summary['approval_status'] = session['approval_status']
     summary['proposal_count'] = len(proposal_rows)
     summary['paper_bet_count'] = len(paper_bets)
+    summary['top_candidate'] = summary['top_candidates'][0] if summary['top_candidates'] else None
+    summary['best_edge_row'] = (
+        max(board_rows_with_edge, key=lambda row: row['edge_vs_ask']) if board_rows_with_edge else None
+    )
+    summary['soonest_close_minutes'] = (
+        min(row['minutes_to_close'] for row in board_rows_with_close) if board_rows_with_close else None
+    )
+    summary['pending_proposals'] = proposal_status_counts.get('pending_review', 0)
+    summary['approved_proposals'] = proposal_status_counts.get('approved', 0)
+    summary['adjusted_proposals'] = proposal_status_counts.get('adjustments_requested', 0)
+    summary['rejected_proposals'] = proposal_status_counts.get('rejected', 0)
+    summary['converted_proposals'] = proposal_status_counts.get('converted_to_paper', 0)
+    summary['open_paper_bets'] = paper_status_counts.get('open', 0)
+    summary['closed_paper_bets'] = paper_status_counts.get('closed', 0)
+    summary['open_paper_notional'] = _sum_numeric(open_paper_bets, 'notional_dollars')
+    summary['closed_realized_pnl'] = _sum_numeric(closed_paper_bets, 'realized_pnl')
+    summary['latest_review_event'] = review_events[0] if review_events else None
+    summary['latest_lesson'] = next(
+        (row['lesson_summary'] for row in closed_paper_bets if row.get('lesson_summary')),
+        None,
+    )
 
     return {
         'session': session,

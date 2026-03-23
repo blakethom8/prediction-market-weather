@@ -10,19 +10,20 @@
   <div class="page-glow page-glow-a"></div>
   <div class="page-glow page-glow-b"></div>
   <header class="site-header">
-    <div>
+    <div class="header-brand">
       <a class="brand" href="{{ request.url_for('dashboard') }}">Prediction Market Weather</a>
-      <p class="brand-subtitle">Forecast first. Compare the full board before isolating a bet.</p>
+      <p class="brand-subtitle">Local operator console for daily board scans, strategy review, and paper-bet lessons.</p>
     </div>
     <nav class="site-nav">
       <a href="{{ request.url_for('dashboard') }}" class="{% if nav == 'dashboard' %}is-active{% endif %}">Dashboard</a>
-      <a href="{{ request.url_for('latest_board') }}" class="{% if nav == 'board' %}is-active{% endif %}">Daily Board</a>
+      <a href="{{ request.url_for('latest_board') }}" class="{% if nav == 'board' %}is-active{% endif %}">Board</a>
       <a href="{{ request.url_for('paper_bets_page') }}" class="{% if nav == 'paper-bets' %}is-active{% endif %}">Paper Bets</a>
     </nav>
     <div class="header-status">
       <span class="chip">DuckDB local</span>
+      <span class="chip chip-muted">Tailscale browser ready</span>
       {% if latest_session %}
-      <a class="chip chip-link" href="{{ request.url_for('strategy_detail', strategy_id=latest_session.strategy_id) }}">Latest {{ latest_session.strategy_date_local }}</a>
+      <a class="chip chip-link" href="{{ request.url_for('strategy_detail', strategy_id=latest_session.strategy_id) }}">Latest session {{ latest_session.strategy_date_local }}</a>
       {% else %}
       <span class="chip chip-muted">No sessions yet</span>
       {% endif %}

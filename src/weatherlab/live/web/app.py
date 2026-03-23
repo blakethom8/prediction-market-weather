@@ -73,6 +73,12 @@ def _format_money(value: float | None) -> str:
     return f'${value:,.2f}'
 
 
+def _status_label(value: str | None) -> str:
+    if value in (None, ''):
+        return 'n/a'
+    return str(value).replace('_', ' ')
+
+
 def _status_tone(value: str | None) -> str:
     mapping = {
         'approved': 'good',
@@ -87,6 +93,7 @@ def _status_tone(value: str | None) -> str:
         'pass': 'muted',
         'settled': 'muted',
         'converted_to_paper': 'muted',
+        'unproposed': 'neutral',
     }
     return mapping.get(value or '', 'neutral')
 
@@ -99,13 +106,96 @@ def _short_text(value: str | None, limit: int = 100) -> str:
     return value[: limit - 3].rstrip() + '...'
 
 
+def _notes_display(value: Any) -> str:
+    if value in (None, '', {}, []):
+        return 'n/a'
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            if item in (None, '', {}, []):
+                continue
+            parts.append(f"{_status_label(str(key)).capitalize()}: {item}")
+        return '; '.join(parts) if parts else 'n/a'
+    if isinstance(value, (list, tuple, set)):
+        parts = [str(item) for item in value if item not in (None, '')]
+        return '; '.join(parts) if parts else 'n/a'
+    return str(value)
+
+
+def _sum_numeric(rows: list[dict[str, Any]], key: str) -> float:
+    return sum(float(row.get(key) or 0.0) for row in rows)
+
+
+def _build_dashboard_attention_items(snapshot: dict[str, Any], latest_detail: dict[str, Any] | None) -> list[dict[str, Any]]:
+    metrics = snapshot['metrics']
+    items = [
+        {
+            'label': 'Strategy reviews waiting',
+            'value': metrics['pending_strategy_reviews'],
+            'tone': 'warn' if metrics['pending_strategy_reviews'] else 'good',
+            'note': 'Sessions that still need approve, reject, or adjust.',
+        },
+        {
+            'label': 'Proposals waiting',
+            'value': metrics['pending_proposals'],
+            'tone': 'warn' if metrics['pending_proposals'] else 'good',
+            'note': 'Contracts sitting in the proposal queue.',
+        },
+        {
+            'label': 'Open paper positions',
+            'value': metrics['open_paper_bets'],
+            'tone': 'warn' if metrics['open_paper_bets'] else 'neutral',
+            'note': 'Paper bets still exposed to settlement.',
+        },
+        {
+            'label': 'Closed paper bets',
+            'value': metrics['closed_paper_bets'],
+            'tone': 'good' if metrics['closed_paper_bets'] else 'neutral',
+            'note': 'Settled positions with an outcome to review.',
+        },
+    ]
+    if latest_detail is not None:
+        summary = latest_detail['summary']
+        items.append(
+            {
+                'label': 'Latest board setup',
+                'value': f"{summary['proposed_count']} priority / {summary['watch_count']} watch",
+                'tone': 'good' if summary['proposed_count'] else 'neutral',
+                'note': f"{summary['board_size']} markets across {summary['board_city_count']} cities.",
+            }
+        )
+    return items
+
+
+def _build_paper_summary(
+    *,
+    strategy_filter: str | None,
+    open_bets: list[dict[str, Any]],
+    closed_bets: list[dict[str, Any]],
+) -> dict[str, Any]:
+    winning_bets = [row for row in closed_bets if (row.get('realized_pnl') or 0) > 0]
+    losing_bets = [row for row in closed_bets if (row.get('realized_pnl') or 0) < 0]
+    open_edges = [float(row['expected_edge']) for row in open_bets if row.get('expected_edge') is not None]
+    return {
+        'strategy_filter': strategy_filter,
+        'open_notional': _sum_numeric(open_bets, 'notional_dollars'),
+        'average_open_expected_edge': (sum(open_edges) / len(open_edges)) if open_edges else None,
+        'closed_realized_pnl': _sum_numeric(closed_bets, 'realized_pnl'),
+        'winning_bets': len(winning_bets),
+        'losing_bets': len(losing_bets),
+        'latest_lesson': next((row['lesson_summary'] for row in closed_bets if row.get('lesson_summary')), None),
+    }
+
+
 templates.env.filters['datetime_display'] = _format_datetime
 templates.env.filters['probability_display'] = _format_probability
 templates.env.filters['cents_display'] = _format_cents
 templates.env.filters['edge_display'] = _format_edge
 templates.env.filters['money_display'] = _format_money
+templates.env.filters['status_label'] = _status_label
 templates.env.filters['status_tone'] = _status_tone
 templates.env.filters['short_text'] = _short_text
+templates.env.filters['notes_display'] = _notes_display
 
 
 def _assert_live_schema_ready(*, db_path: str | Path | None = None) -> None:
@@ -226,12 +316,22 @@ def create_app(*, db_path: str | Path | None = None) -> FastAPI:
     @app.get('/', response_class=HTMLResponse, name='dashboard')
     def dashboard(request: Request) -> HTMLResponse:
         snapshot = get_dashboard_snapshot(db_path=request.app.state.db_path)
+        latest_session = snapshot['latest_session']
+        latest_detail = (
+            get_strategy_detail(strategy_id=latest_session['strategy_id'], db_path=request.app.state.db_path)
+            if latest_session
+            else None
+        )
         return render(
             request,
             template_name='dashboard.html',
             page_title='Dashboard',
             nav='dashboard',
-            context=snapshot,
+            context={
+                **snapshot,
+                'latest_detail': latest_detail,
+                'attention_items': _build_dashboard_attention_items(snapshot, latest_detail),
+            },
         )
 
     @app.get('/board', response_class=HTMLResponse, name='latest_board')
@@ -277,6 +377,11 @@ def create_app(*, db_path: str | Path | None = None) -> FastAPI:
                 'paper_bets': paper_bets,
                 'open_bets': open_bets,
                 'closed_bets': closed_bets,
+                'paper_summary': _build_paper_summary(
+                    strategy_filter=strategy_id,
+                    open_bets=open_bets,
+                    closed_bets=closed_bets,
+                ),
             },
         )
 

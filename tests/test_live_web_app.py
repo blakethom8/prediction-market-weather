@@ -156,12 +156,16 @@ class LiveWebAppTests(unittest.TestCase):
         dashboard = self.client.get('/')
         self.assertEqual(dashboard.status_code, 200)
         self.assertIn('Betting workflow dashboard', dashboard.text)
+        self.assertIn('What needs attention now', dashboard.text)
+        self.assertIn('Top opportunity and review note', dashboard.text)
         self.assertIn(self.package['strategy_id'], dashboard.text)
         self.assertIn(self.primary_proposal['market_ticker'], dashboard.text)
 
         strategy = self.client.get(f"/strategies/{self.package['strategy_id']}")
         self.assertEqual(strategy.status_code, 200)
         self.assertIn('Ranked proposals', strategy.text)
+        self.assertIn('Session decision state', strategy.text)
+        self.assertIn('Adjustments were requested on this session.', strategy.text)
         self.assertIn('Keep size small until near close.', strategy.text)
         self.assertIn(self.primary_proposal['market_ticker'], strategy.text)
 
@@ -169,6 +173,7 @@ class LiveWebAppTests(unittest.TestCase):
         board = self.client.get('/board')
         self.assertEqual(board.status_code, 200)
         self.assertIn('Captured market rows', board.text)
+        self.assertIn('How to work this board', board.text)
         self.assertIn('TEST_CHI_58', board.text)
         self.assertIn('TEST_NYC_54', board.text)
 
@@ -179,6 +184,7 @@ class LiveWebAppTests(unittest.TestCase):
         paper_bets = self.client.get('/paper-bets')
         self.assertEqual(paper_bets.status_code, 200)
         self.assertIn('Settled outcomes and lessons', paper_bets.text)
+        self.assertIn('Where to spend attention', paper_bets.text)
         self.assertIn('Good edge capture after broad-board comparison.', paper_bets.text)
 
         healthz = self.client.get('/healthz')
@@ -209,6 +215,7 @@ class FreshBootstrapLiveWebAppTests(unittest.TestCase):
         dashboard = self.client.get('/')
         self.assertEqual(dashboard.status_code, 200)
         self.assertIn('Betting workflow dashboard', dashboard.text)
+        self.assertIn('Tracked sessions', dashboard.text)
         self.assertIn(self.package['strategy_id'], dashboard.text)
 
         board = self.client.get('/board')
@@ -219,11 +226,13 @@ class FreshBootstrapLiveWebAppTests(unittest.TestCase):
         strategy = self.client.get(f"/strategies/{self.package['strategy_id']}")
         self.assertEqual(strategy.status_code, 200)
         self.assertIn('Proposal to review chain', strategy.text)
+        self.assertIn('Session decision state', strategy.text)
         self.assertIn('No proposals stored for this strategy session.', strategy.text)
 
         paper_bets = self.client.get('/paper-bets')
         self.assertEqual(paper_bets.status_code, 200)
         self.assertIn('No open paper bets right now.', paper_bets.text)
+        self.assertIn('No paper bets have been recorded yet.', paper_bets.text)
 
         healthz = self.client.get('/healthz')
         self.assertEqual(healthz.status_code, 200)
