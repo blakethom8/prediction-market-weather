@@ -142,6 +142,10 @@ class KalshiClientTests(unittest.TestCase):
         self.assertAlmostEqual(market['no_bid'], 0.55)
         self.assertAlmostEqual(market['no_ask'], 0.59)
 
+    def test_live_weather_ticker_filter_accepts_current_t_series(self):
+        self.assertTrue(is_live_weather_ticker('KXHIGHTDC-26MAR22-T70'))
+        self.assertTrue(is_live_weather_ticker('KXHIGHTSEA-26MAR22-B60.5'))
+
     def test_empty_market_responses_return_empty_list(self):
         client = KalshiClient(key_id='dummy-key-id', private_key_path='unused.pem')
 

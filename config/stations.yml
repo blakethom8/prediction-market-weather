@@ -15,8 +15,17 @@ stations:
     timezone_name: America/Chicago
     lat: 41.9786
     lon: -87.9048
+    is_primary: false
+    notes: "Secondary Chicago station; settlement contracts track Midway, not O'Hare."
+  - station_id: KMDW
+    city_id: chi
+    station_name: Chicago Midway International Airport
+    network: nws
+    timezone_name: America/Chicago
+    lat: 41.7868
+    lon: -87.7522
     is_primary: true
-    notes: "Default Chicago settlement proxy pending exact contract rule verification."
+    notes: "Settlement station for Kalshi Chicago high-temperature markets."
   - station_id: KMIA
     city_id: mia
     station_name: Miami International Airport
@@ -33,8 +42,35 @@ stations:
     timezone_name: America/Los_Angeles
     lat: 34.0236
     lon: -118.2911
+    is_primary: false
+    notes: "Secondary LA climate station; settlement contracts track KLAX."
+  - station_id: KLAX
+    city_id: lax
+    station_name: Los Angeles International Airport
+    network: nws
+    timezone_name: America/Los_Angeles
+    lat: 33.9425
+    lon: -118.4081
     is_primary: true
-    notes: "LA climate reporting is tricky; must verify exact source per contract."
+    notes: "Settlement station for Kalshi Los Angeles high-temperature markets."
+  - station_id: KDCA
+    city_id: dc
+    station_name: Ronald Reagan Washington National Airport
+    network: nws
+    timezone_name: America/New_York
+    lat: 38.8521
+    lon: -77.0377
+    is_primary: true
+    notes: "Settlement station for Kalshi DC high-temperature markets."
+  - station_id: KBOS
+    city_id: bos
+    station_name: Boston Logan International Airport
+    network: nws
+    timezone_name: America/New_York
+    lat: 42.3601
+    lon: -71.0105
+    is_primary: true
+    notes: "Settlement station for Kalshi Boston high-temperature markets."
   - station_id: KDAL
     city_id: dal
     station_name: Dallas Love Field
@@ -80,3 +116,21 @@ stations:
     lon: -95.2789
     is_primary: true
     notes: "Default Houston settlement proxy pending exact contract rule verification."
+  - station_id: KSEA
+    city_id: sea
+    station_name: Seattle-Tacoma International Airport
+    network: nws
+    timezone_name: America/Los_Angeles
+    lat: 47.4447
+    lon: -122.3136
+    is_primary: true
+    notes: "Settlement station for Kalshi Seattle high-temperature markets."
+  - station_id: KATL
+    city_id: atl
+    station_name: Hartsfield-Jackson Atlanta International Airport
+    network: nws
+    timezone_name: America/New_York
+    lat: 33.6367
+    lon: -84.4281
+    is_primary: true
+    notes: "Settlement station for Kalshi Atlanta high-temperature markets."

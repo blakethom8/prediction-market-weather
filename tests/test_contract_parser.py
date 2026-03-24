@@ -73,10 +73,20 @@ class ContractParserTests(unittest.TestCase):
         self.assertEqual(parsed.market_date_local, date(2025, 11, 23))
 
     def test_fails_cleanly_for_unsupported_title(self):
-        parsed = parse_temperature_contract("TEST6", "Will it be windy in Boston tomorrow?")
+        parsed = parse_temperature_contract("TEST6", "Will it be windy tomorrow?")
         self.assertEqual(parsed.parse_status, "failed")
         self.assertIsNone(parsed.operator)
         self.assertIsNone(parsed.threshold_low_f)
+
+    def test_parses_dc_city_alias(self):
+        parsed = parse_temperature_contract(
+            "TEST7",
+            "Will the high temperature in Washington, DC be below 67 on Mar 24, 2026?",
+        )
+        self.assertEqual(parsed.city_id, "dc")
+        self.assertEqual(parsed.operator, "<=")
+        self.assertEqual(parsed.threshold_low_f, 67.0)
+        self.assertEqual(parsed.market_date_local, date(2026, 3, 24))
 
 
 if __name__ == "__main__":

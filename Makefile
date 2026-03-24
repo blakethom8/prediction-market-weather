@@ -41,3 +41,18 @@ fetch-live:
 sync-live-orders:
 	@echo "Syncing live order fill status from Kalshi..."
 	PYTHONPATH=src .venv/bin/python -m weatherlab.live.live_orders sync
+
+morning-scan:
+	@echo "Running morning market scan..."
+	PYTHONPATH=src WEATHER_WAREHOUSE_PATH=$(PWD)/data/warehouse/weather_markets.duckdb \
+		.venv/bin/python scripts/morning_scan.py --notify
+
+validate-forecasts:
+	@echo "Validating NWS forecasts against ASOS observations..."
+	PYTHONPATH=src WEATHER_WAREHOUSE_PATH=$(PWD)/data/warehouse/weather_markets.duckdb \
+		.venv/bin/python scripts/morning_scan.py --validate-only
+
+settle-today:
+	@echo "Checking settlement status for yesterday's markets..."
+	PYTHONPATH=src WEATHER_WAREHOUSE_PATH=$(PWD)/data/warehouse/weather_markets.duckdb \
+		.venv/bin/python scripts/settle_markets.py --notify

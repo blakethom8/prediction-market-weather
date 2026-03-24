@@ -19,6 +19,7 @@ class WeatherTickerFilterTests(unittest.TestCase):
     def test_known_weather_prefixes_match(self):
         self.assertTrue(is_weather_ticker('HIGHNY-25MAR19-B45.5'))
         self.assertTrue(is_weather_ticker('KXHIGHCHI-25NOV17-T92'))
+        self.assertTrue(is_weather_ticker('KXHIGHTATL-25NOV17-T72'))
         self.assertTrue(is_weather_ticker('KXCITIESWEATHER-25MAR19'))
         self.assertTrue(is_weather_ticker('RAINNYC-25MAR19'))
         self.assertTrue(is_weather_ticker('SNOWNYM-25JAN05'))

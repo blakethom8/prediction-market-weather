@@ -7,13 +7,29 @@ cities:
     lon: -74.0060
     primary_station_id: KNYC
     aliases: ["new york", "new york city", "nyc"]
+  - city_id: dc
+    city_name: Washington
+    state_code: DC
+    timezone_name: America/New_York
+    lat: 38.9072
+    lon: -77.0369
+    primary_station_id: KDCA
+    aliases: ["washington", "washington dc", "washington, dc", "dc"]
+  - city_id: bos
+    city_name: Boston
+    state_code: MA
+    timezone_name: America/New_York
+    lat: 42.3601
+    lon: -71.0589
+    primary_station_id: KBOS
+    aliases: ["boston"]
   - city_id: chi
     city_name: Chicago
     state_code: IL
     timezone_name: America/Chicago
     lat: 41.8781
     lon: -87.6298
-    primary_station_id: KORD
+    primary_station_id: KMDW
     aliases: ["chicago"]
   - city_id: mia
     city_name: Miami
@@ -29,7 +45,7 @@ cities:
     timezone_name: America/Los_Angeles
     lat: 34.0522
     lon: -118.2437
-    primary_station_id: KCQT
+    primary_station_id: KLAX
     aliases: ["los angeles", "la"]
   - city_id: dal
     city_name: Dallas
@@ -71,3 +87,19 @@ cities:
     lon: -95.3698
     primary_station_id: KHOU
     aliases: ["houston"]
+  - city_id: sea
+    city_name: Seattle
+    state_code: WA
+    timezone_name: America/Los_Angeles
+    lat: 47.6062
+    lon: -122.3321
+    primary_station_id: KSEA
+    aliases: ["seattle"]
+  - city_id: atl
+    city_name: Atlanta
+    state_code: GA
+    timezone_name: America/New_York
+    lat: 33.7490
+    lon: -84.3880
+    primary_station_id: KATL
+    aliases: ["atlanta"]

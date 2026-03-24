@@ -16,10 +16,11 @@ class ParserAuditTests(unittest.TestCase):
         self.assertEqual(len(audited), 3)
         self.assertEqual(summary['total'], 3)
         self.assertEqual(summary['parsed'], 2)
-        self.assertEqual(summary['failed'], 1)
+        self.assertEqual(summary['partial'], 1)
+        self.assertEqual(summary['failed'], 0)
         self.assertEqual(audited[0]['city_id'], 'nyc')
         self.assertEqual(audited[1]['operator'], '<=')
-        self.assertEqual(audited[2]['parse_status'], 'failed')
+        self.assertEqual(audited[2]['parse_status'], 'partial')
 
 
 if __name__ == '__main__':
