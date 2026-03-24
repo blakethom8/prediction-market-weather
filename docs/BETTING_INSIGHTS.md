@@ -6,6 +6,20 @@ A living document. Updated as we learn. The goal is to avoid repeating mistakes 
 
 ## Settlement & Data Sources
 
+### Station Accuracy Log
+
+Track the gap between the raw ASOS read we ingest and the official Kalshi/NWS settlement outcome. Small bucket-midpoint differences are fine. Large misses mean we are reading the wrong source for settlement.
+
+| Date | City | ASOS Reading | Kalshi Official | Gap | Notes |
+|---|---|---:|---:|---:|---|
+| March 23, 2026 | Washington DC (KDCA) | 68.0°F | ~68°F | ~0°F | Matches. |
+| March 23, 2026 | Boston (KBOS) | 37.4°F | ~37°F | ~0°F | Matches. |
+| March 23, 2026 | Houston (KHOU) | 84.2°F | ~84°F | ~0°F | Matches. |
+| March 23, 2026 | Miami (KMIA) | 82.4°F | ~82°F | ~0°F | Matches. |
+| March 23, 2026 | Philadelphia (KPHL) | 52.0°F | 58-59°F | -7°F | MISS. Investigation needed. Kalshi settlement source may differ from raw KPHL ASOS pull. |
+
+**Philadelphia follow-up:** verify whether Kalshi is settling off a different climatological report or station interpretation than the direct KPHL ASOS daily high we currently read.
+
 ### The Airport Station Gap (Discovered: March 23, 2026)
 
 **The most important thing to understand about these markets.**

@@ -12,6 +12,7 @@ from weatherlab.pipeline.learning import (
     run_settlement_and_learning,
     write_daily_memory,
 )
+from weatherlab.settlement.kalshi_settlement import fix_march23_settlements
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -21,6 +22,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--notify', action='store_true', help='Send the report via openclaw system event')
     parser.add_argument('--auto-insights', action='store_true', help='Append generated insights to docs/BETTING_INSIGHTS.md')
     parser.add_argument('--update-memory', action='store_true', help='Append settlement memory to ~/.openclaw/workspace/memory')
+    parser.add_argument('--fix-history', action='store_true', help='Re-settle March 23, 2026 orders from Kalshi market results')
     return parser.parse_args(argv)
 
 
@@ -36,8 +38,39 @@ def _send_notification(text: str) -> int:
     return int(completed.returncode)
 
 
+def _format_history_fix_report(history_fix_report: dict) -> str:
+    lines = [
+        f"🛠️ MARCH 23 HISTORY FIX — {history_fix_report['target_date']}",
+        '',
+    ]
+    if not history_fix_report.get('orders'):
+        lines.append('No March 23 orders were found to repair.')
+    else:
+        for order in history_fix_report['orders']:
+            if not order.get('settled'):
+                lines.append(f"- {order['ticker']}: still not finalized on Kalshi")
+                continue
+            outcome_label = 'YES' if order['outcome'] == 'yes' else 'NO'
+            pnl_value = float(order.get('realized_pnl_dollars') or 0.0)
+            lines.append(
+                f"- {order['ticker']}: Kalshi {outcome_label} | P&L {'+' if pnl_value >= 0 else '-'}${abs(pnl_value):.2f}"
+            )
+    lines.append('')
+    lines.append(f"Orders repaired: {history_fix_report.get('settled_count', 0)}")
+    lines.append(f"March 23 realized P&L: ${float(history_fix_report.get('total_realized_pnl') or 0.0):.2f}")
+    return '\n'.join(lines).rstrip()
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    if args.fix_history:
+        history_fix_report = fix_march23_settlements(db_path=args.db_path)
+        report = _format_history_fix_report(history_fix_report)
+        if args.notify:
+            return _send_notification(report)
+        print(report)
+        return 0
+
     target_date = date.fromisoformat(args.date) if args.date else _default_target_date()
 
     settlement_report = run_settlement_and_learning(target_date, db_path=args.db_path)

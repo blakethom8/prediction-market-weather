@@ -8,7 +8,8 @@ from typing import Any
 from ..build.bootstrap import bootstrap
 from ..db import connect
 from ..forecast.asos import STATION_IDS, fetch_station_daily_high
-from ..live.live_orders import fetch_live_orders, settle_live_order
+from ..live.live_orders import fetch_live_orders, settle_live_order as persist_live_order_settlement
+from ..settlement.kalshi_settlement import settle_live_order as settle_live_order_from_kalshi
 from ._markets import display_name_for_city, market_bucket_center, outcome_for_observed_high, parse_weather_market
 
 
@@ -140,7 +141,12 @@ def record_bet_outcome(
         raise ValueError(f'Unable to determine market outcome for {row["ticker"]}')
     outcome_result = 'yes' if outcome_bool else 'no'
     settlement_note = f'{station_id} observed {float(actual_high_f):.1f}F'
-    settle_live_order(str(row['kalshi_order_id']), outcome_result, settlement_note=settlement_note, db_path=db_path)
+    persist_live_order_settlement(
+        str(row['kalshi_order_id']),
+        outcome_result,
+        settlement_note=settlement_note,
+        db_path=db_path,
+    )
 
     updated_row = fetch_live_orders(db_path=db_path, live_order_id=live_order_id)[0]
     existing = _fetch_calibration_row(live_order_id, db_path=db_path)
@@ -255,10 +261,10 @@ def record_bet_outcome(
 def run_settlement_and_learning(target_date: date, db_path=None) -> dict:
     """
     Full settlement pipeline for a completed market day:
-    1. For each city: fetch actual ASOS daily high (previous day)
-    2. For each open live_order on that date:
-       - Determine yes/no outcome from actual high vs bucket
-       - Call record_bet_outcome()
+    1. For each city: fetch ASOS daily high for comparison only
+    2. For each unresolved live_order on that date:
+       - Query Kalshi for market finalization and result
+       - Settle from Kalshi ground truth
     3. Compute session P&L
     4. Generate insights text (see below)
     5. Return full settlement report
@@ -266,8 +272,10 @@ def run_settlement_and_learning(target_date: date, db_path=None) -> dict:
 
     bootstrap(db_path=db_path)
     open_orders = []
-    for row in fetch_live_orders(db_path=db_path, status_filter=['pending', 'resting', 'executed']):
+    for row in fetch_live_orders(db_path=db_path):
         if int(row.get('fill_count') or 0) <= 0:
+            continue
+        if str(row.get('status') or '').lower() == 'settled':
             continue
         market = parse_weather_market({'ticker': row['ticker'], 'title': row['ticker']})
         if market is None or market.market_date_local != target_date:
@@ -282,41 +290,43 @@ def run_settlement_and_learning(target_date: date, db_path=None) -> dict:
     settled_orders: list[dict[str, Any]] = []
     for city_key in sorted(grouped_orders):
         station_id = STATION_IDS[city_key]
-        actual_high_f = fetch_station_daily_high(station_id, target_date)
+        asos_high_f = fetch_station_daily_high(station_id, target_date)
         city_report = {
             'city_key': city_key,
             'city_name': display_name_for_city(city_key),
             'station_id': station_id,
-            'actual_high_f': actual_high_f,
+            'actual_high_f': None,
+            'official_high_f': None,
+            'asos_high_f': asos_high_f,
+            'station_gap_f': None,
+            'station_gap_detected': False,
             'orders': [],
         }
-        if actual_high_f is None:
-            city_report['note'] = 'ASOS daily high unavailable'
-            city_reports.append(city_report)
-            continue
+        if asos_high_f is None:
+            city_report['note'] = 'ASOS daily high unavailable for station-gap check.'
 
         for row, market in sorted(grouped_orders[city_key], key=lambda item: item[0]['ticker']):
-            calibration = _fetch_calibration_row(str(row['live_order_id']), db_path=db_path)
-            fallback_forecast = market_bucket_center(market)
-            our_forecast_f = _coerce_float(calibration['our_forecast_f']) if calibration is not None else None
-            if our_forecast_f is None:
-                our_forecast_f = fallback_forecast if fallback_forecast is not None else float(actual_high_f)
-            forecast_confidence = (
-                str(calibration['forecast_confidence'])
-                if calibration is not None and calibration.get('forecast_confidence')
-                else 'unknown'
-            )
-            summary = record_bet_outcome(
-                str(row['live_order_id']),
-                float(actual_high_f),
-                station_id,
-                float(our_forecast_f),
-                forecast_confidence,
-                db_path=db_path,
-            )
+            summary = settle_live_order_from_kalshi(row, db_path=db_path)
             city_report['orders'].append(summary)
-            settled_orders.append(summary)
+            official_high_f = _coerce_float(summary.get('official_high_f'))
+            if official_high_f is not None and city_report['official_high_f'] is None:
+                city_report['official_high_f'] = official_high_f
+                city_report['actual_high_f'] = official_high_f
+            if summary.get('settled'):
+                settled_orders.append(summary)
         city_reports.append(city_report)
+
+        official_high_f = _coerce_float(city_report.get('official_high_f'))
+        if official_high_f is not None and asos_high_f is not None:
+            gap_f = round(float(asos_high_f) - official_high_f, 1)
+            city_report['station_gap_f'] = gap_f
+            city_report['station_gap_detected'] = abs(gap_f) >= 1.0
+            if city_report['station_gap_detected']:
+                city_report['note'] = (
+                    f'Station gap detected: ASOS {float(asos_high_f):.1f}°F vs Kalshi official ~{official_high_f:.1f}°F.'
+                )
+        elif not any(order.get('settled') for order in city_report['orders']):
+            city_report['note'] = 'Kalshi markets not finalized yet.'
 
     session_pnl = round(sum(float(row.get('realized_pnl_dollars') or 0.0) for row in settled_orders), 2)
     con = connect(read_only=True, db_path=db_path)
@@ -363,14 +373,14 @@ def generate_insights_text(settlement_report: dict) -> str:
     insights: list[str] = []
 
     for city in settlement_report.get('cities', []):
-        orders = city.get('orders') or []
+        orders = [order for order in city.get('orders') or [] if order.get('settled')]
         if not orders:
             continue
         city_name = city['city_name']
         model_order = next((order for order in orders if order.get('forecast_error_f') is not None), None)
         if model_order is not None and abs(float(model_order['forecast_error_f'])) > 5.0:
             insights.append(
-                f"- {city_name}: model missed by {float(model_order['forecast_error_f']):+.1f}°F versus {city['station_id']} actual {float(city['actual_high_f']):.1f}°F."
+                f"- {city_name}: model missed by {float(model_order['forecast_error_f']):+.1f}°F versus Kalshi official ~{float(city['actual_high_f']):.1f}°F."
             )
 
         market_better = next(
@@ -399,6 +409,13 @@ def generate_insights_text(settlement_report: dict) -> str:
         if model_better is not None:
             insights.append(
                 f"- {city_name}: our model beat the market favorite ({float(model_better['our_model_abs_error_f']):.1f}°F vs {float(model_better['market_favorite_error_f']):.1f}°F error)."
+            )
+
+        if city.get('station_gap_detected'):
+            official_high_f = float(city['official_high_f'])
+            asos_high_f = float(city['asos_high_f'])
+            insights.append(
+                f"- {city_name}: station gap detected, ASOS {asos_high_f:.1f}°F versus Kalshi official ~{official_high_f:.1f}°F. Investigate settlement source."
             )
 
     for city_key, summary in sorted((settlement_report.get('historical_city_summary') or {}).items()):
@@ -455,11 +472,18 @@ def write_daily_memory(settlement_report: dict, memory_dir: str = None) -> None:
         '',
     ]
     for city in settlement_report.get('cities', []):
-        actual_high = city.get('actual_high_f')
+        actual_high = city.get('official_high_f')
         actual_label = 'unavailable' if actual_high is None else f'{float(actual_high):.1f}°F'
         lines.append(f"### {city['city_name']} ({city['station_id']})")
-        lines.append(f'- Actual high: {actual_label}')
+        lines.append(f'- Official high (Kalshi/NWS): {actual_label}')
+        if city.get('asos_high_f') is not None:
+            lines.append(f"- ASOS station high: {float(city['asos_high_f']):.1f}°F")
+        if city.get('station_gap_detected'):
+            lines.append(f"- Station gap detected: {float(city['station_gap_f']):+.1f}°F")
         for order in city.get('orders', []):
+            if not order.get('settled'):
+                lines.append(f"- {order['ticker']} -> Awaiting Kalshi finalization")
+                continue
             outcome_label = 'YES' if order['outcome'] == 'yes' else 'NO'
             lines.append(
                 f"- {order['ticker']} -> {outcome_label} | P&L {_signed_currency(float(order.get('realized_pnl_dollars') or 0.0))}"
@@ -488,18 +512,31 @@ def format_settlement_notification(settlement_report: dict, *, insights_updated:
         lines.append('No filled live orders were ready to settle.')
     else:
         for city in settlement_report.get('cities', []):
-            actual_high = city.get('actual_high_f')
-            actual_label = 'unavailable' if actual_high is None else f'{float(actual_high):.1f}°F'
-            lines.append(f"{city['station_id']} ({city['city_name']}): {actual_label}")
-            if actual_high is None:
-                lines.append('  Observation data unavailable; skipping settlement')
+            official_high = city.get('official_high_f')
+            official_label = 'unavailable' if official_high is None else f'~{float(official_high):.1f}°F'
+            asos_high = city.get('asos_high_f')
+            asos_label = 'unavailable' if asos_high is None else f'{float(asos_high):.1f}°F'
+            lines.append(
+                f"{city['station_id']} ({city['city_name']}): official {official_label} | ASOS {asos_label}"
+            )
+            if city.get('station_gap_detected'):
+                lines.append(
+                    f"  Station gap detected: ASOS {float(city['asos_high_f']):.1f}°F vs Kalshi official ~{float(city['official_high_f']):.1f}°F"
+                )
+            elif city.get('note'):
+                lines.append(f"  {city['note']}")
             for order in city.get('orders', []):
+                if not order.get('settled'):
+                    lines.append(
+                        f"  {order['bucket_code']} ({order['bucket_label']}) — awaiting Kalshi finalization"
+                    )
+                    continue
                 outcome_label = 'YES' if order['outcome'] == 'yes' else 'NO'
                 pnl_value = float(order.get('realized_pnl_dollars') or 0.0)
                 pnl_label = f'Win: +${pnl_value:.2f}' if pnl_value >= 0 else f'Loss: -${abs(pnl_value):.2f}'
                 status_icon = '✅' if order['outcome'] == 'yes' else '❌'
                 lines.append(
-                    f"  {order['bucket_code']} ({order['bucket_label']}) — {status_icon} {outcome_label}  {pnl_label}"
+                    f"  {order['bucket_code']} ({order['bucket_label']}) — {status_icon} Kalshi-confirmed {outcome_label}  {pnl_label}"
                 )
             lines.append('')
 

@@ -34,11 +34,14 @@ select
     max(status) as latest_status,
     max(strategy_id) as strategy_id,
     sum(
-        case
-            when outcome_result = 'yes' then fill_count * (1.0 - limit_price_cents / 100.0)
-            when outcome_result = 'no' then -fill_count * limit_price_cents / 100.0
-            else null
-        end
+        coalesce(
+            realized_pnl_dollars,
+            case
+                when outcome_result = 'yes' then fill_count * 1.0 - coalesce(taker_cost_dollars, fill_count * limit_price_cents / 100.0)
+                when outcome_result = 'no' then -coalesce(taker_cost_dollars, fill_count * limit_price_cents / 100.0)
+                else null
+            end
+        )
     ) as realized_pnl_dollars,
     max(outcome_result) as outcome_result
 from ops.live_orders

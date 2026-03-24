@@ -180,14 +180,25 @@ class LearningPipelineTests(unittest.TestCase):
             },
         )
 
-        with patch('weatherlab.pipeline.learning.fetch_station_daily_high', return_value=71.2):
+        with patch(
+            'weatherlab.settlement.kalshi_settlement.fetch_market_result',
+            return_value={
+                'status': 'finalized',
+                'result': 'yes',
+                'title': 'Will the high temp at LAX stay below 76F?',
+            },
+        ), patch(
+            'weatherlab.settlement.kalshi_settlement.fetch_actual_high_from_kalshi',
+            return_value=70.5,
+        ), patch('weatherlab.pipeline.learning.fetch_station_daily_high', return_value=71.2):
             report = run_settlement_and_learning(date(2026, 3, 23), db_path=self.db_path)
 
         self.assertAlmostEqual(report['session_pnl'], 0.40)
         self.assertAlmostEqual(report['cumulative_pnl'], 0.40)
         self.assertIn('our model beat the market favorite', report['insights_text'])
         notification = format_settlement_notification(report, insights_updated=True)
-        self.assertIn('KLAX (Los Angeles): 71.2°F', notification)
+        self.assertIn('KLAX (Los Angeles): official ~70.5°F | ASOS 71.2°F', notification)
+        self.assertIn('Kalshi-confirmed YES', notification)
         self.assertIn('Session P&L: +$0.40', notification)
         self.assertIn('📝 BETTING_INSIGHTS.md updated', notification)
 
@@ -199,7 +210,7 @@ class LearningPipelineTests(unittest.TestCase):
         write_daily_memory(report, memory_dir=str(memory_dir))
         memory_path = memory_dir / '2026-03-23.md'
         self.assertTrue(memory_path.exists())
-        self.assertIn('Prediction Market — Settlement Results', memory_path.read_text())
+        self.assertIn('Official high (Kalshi/NWS)', memory_path.read_text())
 
 
 if __name__ == '__main__':

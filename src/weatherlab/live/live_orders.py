@@ -541,16 +541,26 @@ def settle_live_order(kalshi_order_id, outcome_result: str, settlement_note: str
     if normalized_outcome not in {'yes', 'no'}:
         raise ValueError("outcome_result must be 'yes' or 'no'")
 
-    realized_pnl = round(
-        float(row.get('fill_count') or 0)
-        * _position_pnl_per_contract(
-            action=_normalize_label(row.get('action')) or 'buy',
-            side=_normalize_label(row.get('side')) or 'yes',
-            outcome_result=normalized_outcome,
-            price_cents=row.get('limit_price_cents'),
-        ),
-        2,
-    )
+    fill_count = float(row.get('fill_count') or 0)
+    action = _normalize_label(row.get('action')) or 'buy'
+    side = _normalize_label(row.get('side')) or 'yes'
+    taker_cost_dollars = _normalize_money(row.get('taker_cost_dollars'))
+    if taker_cost_dollars is not None and action == 'buy':
+        realized_pnl = round(
+            fill_count * 1.0 - taker_cost_dollars if normalized_outcome == side else -taker_cost_dollars,
+            2,
+        )
+    else:
+        realized_pnl = round(
+            fill_count
+            * _position_pnl_per_contract(
+                action=action,
+                side=side,
+                outcome_result=normalized_outcome,
+                price_cents=row.get('limit_price_cents'),
+            ),
+            2,
+        )
     settled_at_utc = datetime.now(UTC).replace(tzinfo=None)
 
     con = connect(db_path=db_path)
@@ -614,11 +624,14 @@ def fetch_live_positions(db_path=None, strategy_id: str | None = None) -> list[d
                 max(status) as latest_status,
                 max(strategy_id) as strategy_id,
                 sum(
-                    case
-                        when outcome_result = 'yes' then fill_count * (1.0 - limit_price_cents / 100.0)
-                        when outcome_result = 'no' then -fill_count * limit_price_cents / 100.0
-                        else null
-                    end
+                    coalesce(
+                        realized_pnl_dollars,
+                        case
+                            when outcome_result = 'yes' then fill_count * 1.0 - coalesce(taker_cost_dollars, fill_count * limit_price_cents / 100.0)
+                            when outcome_result = 'no' then -coalesce(taker_cost_dollars, fill_count * limit_price_cents / 100.0)
+                            else null
+                        end
+                    )
                 ) as realized_pnl_dollars,
                 max(outcome_result) as outcome_result
             from ops.live_orders
