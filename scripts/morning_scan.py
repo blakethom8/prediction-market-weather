@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from weatherlab.pipeline.auto_bet import (
-    evaluate_auto_bet_candidates,
+    evaluate_all_auto_bet_candidates,
     format_auto_bet_notification,
     format_no_auto_bet_notification,
     run_auto_betting_session,
@@ -20,6 +20,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--db-path', default=None, help='Optional DuckDB path override for budget/order tracking')
     parser.add_argument('--notify', action='store_true', help='Send the report via openclaw system event')
     parser.add_argument('--include-all', action='store_true', help='Include skipped cities in the scan report')
+    parser.add_argument('--coldmath', dest='coldmath', action='store_true', default=True, help='Include the ColdMath layer alongside the edge scan')
+    parser.add_argument('--edge-only', dest='coldmath', action='store_false', help='Disable the ColdMath layer')
     parser.add_argument('--validate-only', action='store_true', help='Print station forecast validation without trade proposals')
     parser.add_argument('--auto-bet', action='store_true', help='Place real Kalshi bets when all guardrails pass')
     return parser.parse_args(argv)
@@ -58,6 +60,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     target_date = date.fromisoformat(args.date) if args.date else None
     scan_results = run_morning_scan(target_date=target_date, db_path=args.db_path)
+    if not args.coldmath:
+        scan_results = dict(scan_results)
+        scan_results['coldmath_plays'] = []
     if args.validate_only:
         report = _format_validation_only(scan_results)
     elif args.auto_bet:
@@ -67,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             report = format_no_auto_bet_notification(
                 scan_results,
-                evaluate_auto_bet_candidates(scan_results, db_path=args.db_path),
+                evaluate_all_auto_bet_candidates(scan_results, db_path=args.db_path),
             )
     else:
         report = format_scan_report(scan_results, include_all=args.include_all)

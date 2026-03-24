@@ -20,7 +20,8 @@ from ..settings import ROOT
 logger = logging.getLogger(__name__)
 
 AUTO_BET_CONFIG = {
-    'max_daily_spend_dollars': 10.00,
+    'max_daily_spend_dollars': 30.00,
+    'max_daily_edge_dollars': 5.00,
     'max_per_bet_dollars': 5.00,
     'min_edge': 0.20,
     'min_forecast_confidence': 'high',
@@ -28,6 +29,15 @@ AUTO_BET_CONFIG = {
     'max_obs_forecast_divergence_f': 5.0,
     'skip_cities': ['hou'],
     'kill_switch_file': 'data/.auto_bet_disabled',
+}
+
+COLDMATH_CONFIG = {
+    'min_yes_price': 0.88,
+    'min_forecast_gap_f': 10.0,
+    'target_per_bet_dollars': 3.00,
+    'max_per_bet_dollars': 5.00,
+    'max_daily_coldmath_dollars': 20.00,
+    'skip_cities': ['hou'],
 }
 
 AUTO_BET_TIMEZONE = ZoneInfo('America/Los_Angeles')
@@ -124,13 +134,38 @@ def _candidate_city_key(candidate: dict) -> str:
 
 
 def _candidate_label(candidate: dict) -> str:
-    return str(candidate.get('best_bucket_label') or candidate.get('recommendation_reason') or 'Unknown bucket')
+    return str(
+        candidate.get('label')
+        or candidate.get('best_bucket_label')
+        or candidate.get('recommendation_reason')
+        or 'Unknown bucket'
+    )
+
+
+def _candidate_ticker(candidate: dict) -> str:
+    return str(candidate.get('best_bucket') or candidate.get('ticker') or '').strip()
+
+
+def _candidate_strategy(candidate: dict) -> str:
+    return str(candidate.get('bet_strategy') or 'edge').strip().lower() or 'edge'
+
+
+def _candidate_trade_side(candidate: dict) -> str:
+    return str(candidate.get('bet_side') or 'YES').strip().lower() or 'yes'
+
+
+def _candidate_trade_price(candidate: dict) -> float | None:
+    value = candidate.get('bet_price')
+    if value in (None, ''):
+        value = candidate.get('best_bucket_ask')
+    return _normalize_price(value)
 
 
 def _enrich_scan_candidate(city_key: str, row: dict, scan_results: dict, db_path: str | None = None) -> dict:
     candidate = dict(row)
     candidate.setdefault('city_key', city_key)
     candidate.setdefault('city_name', CITY_DISPLAY_NAMES.get(city_key, city_key.upper()))
+    candidate['bet_strategy'] = 'edge'
     candidate['scan_date'] = scan_results.get('scan_date')
     candidate['scan_time_utc'] = scan_results.get('scan_time_utc')
     if db_path is not None:
@@ -155,7 +190,35 @@ def iter_scan_candidates(scan_results: dict, db_path: str | None = None) -> list
     )
 
 
-def get_daily_spend(date_local: date, db_path=None) -> float:
+def _enrich_coldmath_candidate(play: dict, scan_results: dict, db_path: str | None = None) -> dict:
+    candidate = dict(play)
+    city_key = str(candidate.get('city_key') or '')
+    candidate.setdefault('city_name', candidate.get('city') or CITY_DISPLAY_NAMES.get(city_key, city_key.upper()))
+    candidate['bet_strategy'] = 'coldmath'
+    candidate['scan_date'] = scan_results.get('scan_date')
+    candidate['scan_time_utc'] = scan_results.get('scan_time_utc')
+    if db_path is not None:
+        candidate['_db_path'] = db_path
+    return candidate
+
+
+def iter_coldmath_candidates(scan_results: dict, db_path: str | None = None) -> list[dict]:
+    plays = scan_results.get('coldmath_plays')
+    return sorted(
+        [
+            _enrich_coldmath_candidate(play, scan_results, db_path=db_path)
+            for play in list(plays or [])
+        ],
+        key=lambda row: (
+            row.get('forecast_gap_f') if row.get('forecast_gap_f') is not None else float('-inf'),
+            row.get('bet_price') if row.get('bet_price') is not None else float('-inf'),
+            row.get('city_name') or '',
+        ),
+        reverse=True,
+    )
+
+
+def get_daily_spend(date_local: date, db_path=None, *, bet_strategy: str | None = None) -> float:
     """Sum taker_cost_dollars from ops.live_orders placed today."""
 
     bootstrap(db_path=db_path)
@@ -164,24 +227,49 @@ def get_daily_spend(date_local: date, db_path=None) -> float:
 
     con = connect(read_only=True, db_path=db_path)
     try:
-        row = con.execute(
-            '''
-            select coalesce(sum(coalesce(taker_cost_dollars, 0)), 0)
-            from ops.live_orders
-            where created_at_utc >= ?
-              and created_at_utc < ?
-            ''',
-            [start_utc, end_utc],
-        ).fetchone()
+        if bet_strategy is None:
+            row = con.execute(
+                '''
+                select coalesce(sum(coalesce(taker_cost_dollars, 0)), 0)
+                from ops.live_orders
+                where created_at_utc >= ?
+                  and created_at_utc < ?
+                ''',
+                [start_utc, end_utc],
+            ).fetchone()
+        else:
+            row = con.execute(
+                '''
+                select coalesce(sum(coalesce(lo.taker_cost_dollars, 0)), 0)
+                from ops.live_orders lo
+                join ops.calibration_log cl
+                  on cl.live_order_id = lo.live_order_id
+                where lo.created_at_utc >= ?
+                  and lo.created_at_utc < ?
+                  and cl.bet_strategy = ?
+                ''',
+                [start_utc, end_utc, str(bet_strategy)],
+            ).fetchone()
     finally:
         con.close()
     return round(float(row[0] or 0.0), 2)
 
 
-def get_remaining_daily_budget(date_local: date, db_path=None) -> float:
-    """Returns max(0, AUTO_BET_CONFIG['max_daily_spend_dollars'] - get_daily_spend(date_local))"""
+def get_remaining_daily_budget(
+    date_local: date,
+    db_path=None,
+    *,
+    max_daily_spend_dollars: float | None = None,
+    bet_strategy: str | None = None,
+) -> float:
+    """Returns max(0, budget_cap - get_daily_spend(date_local))."""
 
-    remaining = AUTO_BET_CONFIG['max_daily_spend_dollars'] - get_daily_spend(date_local, db_path=db_path)
+    budget_cap = float(
+        AUTO_BET_CONFIG['max_daily_spend_dollars']
+        if max_daily_spend_dollars is None
+        else max_daily_spend_dollars
+    )
+    remaining = budget_cap - get_daily_spend(date_local, db_path=db_path, bet_strategy=bet_strategy)
     return round(max(0.0, remaining), 2)
 
 
@@ -208,7 +296,30 @@ def compute_bet_size(ask_price: float, budget_remaining: float) -> tuple[int, fl
     return contracts, round(contracts * float(normalized_ask), 2)
 
 
-def should_auto_bet(candidate: dict) -> tuple[bool, str]:
+def compute_coldmath_bet_size(ask_price: float, budget_remaining: float) -> tuple[int, float]:
+    """
+    Target a small $2-$5 deployment per ColdMath bet, centered on $3.
+    """
+
+    normalized_ask = _normalize_price(ask_price)
+    if normalized_ask in (None, 0) or normalized_ask < 0:
+        return 0, 0.0
+
+    spend_cap = min(
+        float(budget_remaining),
+        float(COLDMATH_CONFIG['max_per_bet_dollars']),
+        float(COLDMATH_CONFIG['target_per_bet_dollars']),
+    )
+    if spend_cap <= 0:
+        return 0, 0.0
+
+    contracts = int(math.floor((spend_cap + 1e-9) / float(normalized_ask)))
+    if contracts < 1:
+        return 0, 0.0
+    return contracts, round(contracts * float(normalized_ask), 2)
+
+
+def should_auto_bet(candidate: dict, *, edge_budget_dollars: float | None = None) -> tuple[bool, str]:
     """
     Evaluate whether a candidate from morning_scan meets all guardrails.
     Returns (should_bet, reason_string).
@@ -227,9 +338,21 @@ def should_auto_bet(candidate: dict) -> tuple[bool, str]:
 
     candidate_db_path = candidate.get('_db_path')
     budget_date = _scan_budget_date(candidate=candidate)
-    budget_remaining = get_remaining_daily_budget(budget_date, db_path=candidate_db_path)
-    if budget_remaining <= 0:
+    total_budget_remaining = get_remaining_daily_budget(budget_date, db_path=candidate_db_path)
+    if total_budget_remaining <= 0:
         return False, 'daily budget exhausted'
+    strategy_budget_remaining = get_remaining_daily_budget(
+        budget_date,
+        db_path=candidate_db_path,
+        max_daily_spend_dollars=(
+            AUTO_BET_CONFIG['max_daily_edge_dollars']
+            if edge_budget_dollars is None
+            else edge_budget_dollars
+        ),
+        bet_strategy='edge',
+    )
+    if strategy_budget_remaining <= 0:
+        return False, 'edge budget exhausted'
 
     try:
         city_key = _candidate_city_key(candidate)
@@ -267,7 +390,62 @@ def should_auto_bet(candidate: dict) -> tuple[bool, str]:
         reason = str(candidate.get('recommendation_reason') or '').strip()
         return False, reason or f'scan recommendation is {recommendation}'
 
-    contracts, _ = compute_bet_size(float(ask_price), budget_remaining)
+    contracts, _ = compute_bet_size(float(ask_price), strategy_budget_remaining)
+    if contracts < 1:
+        return False, 'budget cannot afford one contract'
+
+    return True, 'eligible'
+
+
+def should_auto_bet_coldmath(candidate: dict, *, coldmath_budget_dollars: float | None = None) -> tuple[bool, str]:
+    if _kill_switch_path().exists():
+        return False, 'auto betting disabled via kill switch'
+
+    candidate_db_path = candidate.get('_db_path')
+    budget_date = _scan_budget_date(candidate=candidate)
+    total_budget_remaining = get_remaining_daily_budget(budget_date, db_path=candidate_db_path)
+    if total_budget_remaining <= 0:
+        return False, 'daily budget exhausted'
+    strategy_budget_remaining = get_remaining_daily_budget(
+        budget_date,
+        db_path=candidate_db_path,
+        max_daily_spend_dollars=(
+            COLDMATH_CONFIG['max_daily_coldmath_dollars']
+            if coldmath_budget_dollars is None
+            else coldmath_budget_dollars
+        ),
+        bet_strategy='coldmath',
+    )
+    if strategy_budget_remaining <= 0:
+        return False, 'coldmath budget exhausted'
+
+    try:
+        city_key = _candidate_city_key(candidate)
+    except KeyError:
+        return False, 'unknown city key'
+
+    if city_key in COLDMATH_CONFIG['skip_cities'] or candidate.get('station_verified') is False:
+        return False, 'station unverified'
+
+    ask_price = _candidate_trade_price(candidate)
+    if ask_price in (None, 0) or ask_price < 0:
+        return False, 'missing ask price'
+    if float(ask_price) < float(COLDMATH_CONFIG['min_yes_price']):
+        return (
+            False,
+            f"price {int(round(float(ask_price) * 100))}¢ is below {int(round(COLDMATH_CONFIG['min_yes_price'] * 100))}¢ threshold",
+        )
+
+    forecast_gap_f = _coerce_float(candidate.get('forecast_gap_f'))
+    if forecast_gap_f is None:
+        return False, 'missing forecast gap'
+    if forecast_gap_f < float(COLDMATH_CONFIG['min_forecast_gap_f']):
+        return (
+            False,
+            f'forecast gap {forecast_gap_f:.1f}F is below {COLDMATH_CONFIG["min_forecast_gap_f"]:.1f}F threshold',
+        )
+
+    contracts, _ = compute_coldmath_bet_size(float(ask_price), strategy_budget_remaining)
     if contracts < 1:
         return False, 'budget cannot afford one contract'
 
@@ -310,6 +488,7 @@ def _extract_order_fields(payload: dict[str, Any], *, fallback_count: int, fallb
             order.get('limit_price'),
             order.get('price'),
             order.get('yes_price'),
+            order.get('no_price'),
             order.get('price_cents'),
             fallback_price_cents,
         )
@@ -343,13 +522,21 @@ def _upsert_pending_calibration(
     db_path=None,
 ) -> None:
     bootstrap(db_path=db_path)
-    market = parse_weather_market({'ticker': candidate['best_bucket'], 'title': candidate['best_bucket']})
+    ticker = _candidate_ticker(candidate)
+    if not ticker:
+        return
+    market = parse_weather_market({'ticker': ticker, 'title': ticker})
     if market is None or market.market_date_local is None:
         return
 
     notes = {
         'auto_bet': True,
+        'bet_side': _candidate_trade_side(candidate),
+        'contract_type': candidate.get('contract_type'),
         'city_name': candidate.get('city_name'),
+        'label': _candidate_label(candidate),
+        'forecast_gap_f': candidate.get('forecast_gap_f'),
+        'threshold_f': candidate.get('threshold_f'),
         'validation_note': candidate.get('validation_note'),
         'obs_forecast_divergence_f': candidate.get('obs_forecast_divergence_f'),
         'market_favorite_ticker': candidate.get('market_favorite_bucket'),
@@ -370,6 +557,7 @@ def _upsert_pending_calibration(
                 city_key,
                 station_id,
                 ticker,
+                bet_strategy,
                 live_order_id,
                 is_paper_bet,
                 our_forecast_f,
@@ -382,18 +570,19 @@ def _upsert_pending_calibration(
                 market_was_right,
                 edge_realized,
                 notes
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             [
                 live_order_id,
                 market.market_date_local,
                 _candidate_city_key(candidate),
                 candidate.get('station_id'),
-                candidate.get('best_bucket'),
+                ticker,
+                _candidate_strategy(candidate),
                 live_order_id,
                 False,
-                candidate.get('forecast_high_f'),
-                candidate.get('forecast_confidence'),
+                candidate.get('forecast_high_f', candidate.get('forecast_f')),
+                candidate.get('forecast_confidence', candidate.get('confidence')),
                 market_ask_price,
                 market_bucket_center(market),
                 None,
@@ -408,44 +597,60 @@ def _upsert_pending_calibration(
         con.close()
 
 
-def place_auto_bet(candidate: dict, db_path=None) -> dict:
-    """
-    Place a real Kalshi order for this candidate.
-    1. Call should_auto_bet() — raise if fails
-    2. Compute bet size
-    3. Place order via KalshiClient (POST /portfolio/orders)
-    4. Seed into ops.live_orders via seed_live_order()
-    5. Return {ticker, contracts, price, cost, order_id, payout_if_win}
+def _candidate_bucket_code(candidate: dict) -> str | None:
+    ticker = _candidate_ticker(candidate)
+    if not ticker:
+        return None
+    return str(candidate.get('best_bucket_code') or ticker.split('-')[-1]).strip() or None
 
-    client_order_id format: f'auto-{city}-{int(time.time())}'
-    """
 
+def _place_candidate_bet(
+    candidate: dict,
+    *,
+    db_path=None,
+    validator,
+    budget_dollars: float,
+    bet_size_fn,
+) -> dict:
     candidate_with_db = dict(candidate)
     if db_path is not None:
         candidate_with_db['_db_path'] = db_path
 
-    should_bet, reason = should_auto_bet(candidate_with_db)
+    strategy = _candidate_strategy(candidate_with_db)
+    budget_kwarg = (
+        {'edge_budget_dollars': budget_dollars}
+        if strategy == 'edge'
+        else {'coldmath_budget_dollars': budget_dollars}
+    )
+    should_bet, reason = validator(candidate_with_db, **budget_kwarg)
     if not should_bet:
         raise ValueError(f'Auto-bet guardrail blocked order: {reason}')
 
     budget_date = _scan_budget_date(candidate=candidate_with_db)
-    budget_remaining = get_remaining_daily_budget(budget_date, db_path=db_path)
-    ask_price = _normalize_price(candidate_with_db.get('best_bucket_ask'))
+    budget_remaining = get_remaining_daily_budget(
+        budget_date,
+        db_path=db_path,
+        max_daily_spend_dollars=budget_dollars,
+        bet_strategy=strategy,
+    )
+    ask_price = _candidate_trade_price(candidate_with_db)
     if ask_price is None:
-        raise ValueError('Candidate is missing best_bucket_ask.')
-    contracts, total_cost = compute_bet_size(ask_price, budget_remaining)
+        raise ValueError('Candidate is missing an ask price.')
+    contracts, total_cost = bet_size_fn(ask_price, budget_remaining)
     if contracts < 1:
         raise ValueError('Remaining budget cannot afford one contract.')
 
     city_key = _candidate_city_key(candidate_with_db)
-    client_order_id = f'auto-{city_key}-{int(time_module.time())}'
+    ticker = _candidate_ticker(candidate_with_db)
+    side = _candidate_trade_side(candidate_with_db)
+    client_order_id = f'auto-{strategy}-{city_key}-{int(time_module.time())}'
     price_cents = int(round(float(ask_price) * 100))
     client = KalshiClient(timeout_seconds=10.0)
     payload = client.place_order(
-        ticker=str(candidate_with_db['best_bucket']),
+        ticker=ticker,
         client_order_id=client_order_id,
         count=contracts,
-        side='yes',
+        side=side,
         action='buy',
         order_type='limit',
         price_cents=price_cents,
@@ -460,9 +665,9 @@ def place_auto_bet(candidate: dict, db_path=None) -> dict:
         kalshi_order_id=kalshi_order_id,
         client_order_id=client_order_id,
         strategy_id=None,
-        ticker=str(candidate_with_db['best_bucket']),
+        ticker=ticker,
         action='buy',
-        side='yes',
+        side=side,
         order_type='limit',
         limit_price_cents=order_fields['limit_price_cents'],
         initial_count=order_fields['initial_count'],
@@ -482,12 +687,15 @@ def place_auto_bet(candidate: dict, db_path=None) -> dict:
     )
 
     return {
+        'bet_strategy': strategy,
         'city_key': city_key,
         'city_name': candidate_with_db.get('city_name', CITY_DISPLAY_NAMES.get(city_key, city_key.upper())),
-        'ticker': str(candidate_with_db['best_bucket']),
-        'bucket_code': candidate_with_db.get('best_bucket_code'),
+        'ticker': ticker,
+        'bucket_code': _candidate_bucket_code(candidate_with_db),
         'bucket_label': _candidate_label(candidate_with_db),
         'edge': candidate_with_db.get('edge'),
+        'forecast_gap_f': candidate_with_db.get('forecast_gap_f'),
+        'bet_side': side,
         'contracts': contracts,
         'price': round(order_fields['limit_price_cents'] / 100.0, 2),
         'cost': order_fields['taker_cost_dollars'] if order_fields['taker_cost_dollars'] is not None else total_cost,
@@ -499,10 +707,50 @@ def place_auto_bet(candidate: dict, db_path=None) -> dict:
     }
 
 
-def evaluate_auto_bet_candidates(scan_results: dict, db_path=None) -> list[dict]:
+def place_auto_bet(candidate: dict, db_path=None, *, edge_budget_dollars: float | None = None) -> dict:
+    return _place_candidate_bet(
+        candidate,
+        db_path=db_path,
+        validator=should_auto_bet,
+        budget_dollars=(
+            AUTO_BET_CONFIG['max_daily_edge_dollars']
+            if edge_budget_dollars is None
+            else edge_budget_dollars
+        ),
+        bet_size_fn=compute_bet_size,
+    )
+
+
+def place_coldmath_bet(candidate: dict, db_path=None, *, coldmath_budget_dollars: float | None = None) -> dict:
+    return _place_candidate_bet(
+        candidate,
+        db_path=db_path,
+        validator=should_auto_bet_coldmath,
+        budget_dollars=(
+            COLDMATH_CONFIG['max_daily_coldmath_dollars']
+            if coldmath_budget_dollars is None
+            else coldmath_budget_dollars
+        ),
+        bet_size_fn=compute_coldmath_bet_size,
+    )
+
+
+def evaluate_auto_bet_candidates(
+    scan_results: dict,
+    db_path=None,
+    *,
+    edge_budget_dollars: float | None = None,
+) -> list[dict]:
     evaluations: list[dict] = []
     for candidate in iter_scan_candidates(scan_results, db_path=db_path):
-        should_bet, reason = should_auto_bet(candidate)
+        should_bet, reason = should_auto_bet(
+            candidate,
+            edge_budget_dollars=(
+                AUTO_BET_CONFIG['max_daily_edge_dollars']
+                if edge_budget_dollars is None
+                else edge_budget_dollars
+            ),
+        )
         evaluations.append(
             {
                 'candidate': candidate,
@@ -513,22 +761,103 @@ def evaluate_auto_bet_candidates(scan_results: dict, db_path=None) -> list[dict]
     return evaluations
 
 
-def run_auto_betting_session(scan_results: dict, db_path=None) -> list[dict]:
+def evaluate_coldmath_auto_bet_candidates(
+    scan_results: dict,
+    db_path=None,
+    *,
+    coldmath_budget_dollars: float | None = None,
+) -> list[dict]:
+    evaluations: list[dict] = []
+    for candidate in iter_coldmath_candidates(scan_results, db_path=db_path):
+        should_bet, reason = should_auto_bet_coldmath(
+            candidate,
+            coldmath_budget_dollars=(
+                COLDMATH_CONFIG['max_daily_coldmath_dollars']
+                if coldmath_budget_dollars is None
+                else coldmath_budget_dollars
+            ),
+        )
+        evaluations.append(
+            {
+                'candidate': candidate,
+                'should_bet': should_bet,
+                'reason': reason,
+            }
+        )
+    return evaluations
+
+
+def evaluate_all_auto_bet_candidates(
+    scan_results: dict,
+    db_path=None,
+    *,
+    coldmath_budget_dollars: float = 5.00,
+) -> list[dict]:
+    edge_budget_dollars = max(0.0, float(AUTO_BET_CONFIG['max_daily_spend_dollars']) - float(coldmath_budget_dollars))
+    return [
+        *evaluate_auto_bet_candidates(
+            scan_results,
+            db_path=db_path,
+            edge_budget_dollars=edge_budget_dollars,
+        ),
+        *evaluate_coldmath_auto_bet_candidates(
+            scan_results,
+            db_path=db_path,
+            coldmath_budget_dollars=coldmath_budget_dollars,
+        ),
+    ]
+
+
+def run_auto_betting_session(scan_results: dict, db_path=None, *, coldmath_budget_dollars: float = 5.00) -> list[dict]:
     """
     Given scan results from run_morning_scan(), place all qualifying bets.
-    Process cities in descending edge order.
-    Stop when daily budget exhausted.
+    Split the daily budget between edge and ColdMath candidates.
     Returns list of placed bet dicts.
     """
 
     placed_bets: list[dict] = []
     budget_date = _scan_budget_date(scan_results=scan_results)
-    for evaluation in evaluate_auto_bet_candidates(scan_results, db_path=db_path):
+    edge_budget_dollars = max(0.0, float(AUTO_BET_CONFIG['max_daily_spend_dollars']) - float(coldmath_budget_dollars))
+
+    for evaluation in evaluate_auto_bet_candidates(
+        scan_results,
+        db_path=db_path,
+        edge_budget_dollars=edge_budget_dollars,
+    ):
         if get_remaining_daily_budget(budget_date, db_path=db_path) <= 0:
             break
         if not evaluation['should_bet']:
             continue
-        placed_bets.append(place_auto_bet(evaluation['candidate'], db_path=db_path))
+        try:
+            placed_bets.append(
+                place_auto_bet(
+                    evaluation['candidate'],
+                    db_path=db_path,
+                    edge_budget_dollars=edge_budget_dollars,
+                )
+            )
+        except ValueError as exc:
+            logger.info('Skipping edge auto-bet after re-check: %s', exc)
+
+    for evaluation in evaluate_coldmath_auto_bet_candidates(
+        scan_results,
+        db_path=db_path,
+        coldmath_budget_dollars=coldmath_budget_dollars,
+    ):
+        if get_remaining_daily_budget(budget_date, db_path=db_path) <= 0:
+            break
+        if not evaluation['should_bet']:
+            continue
+        try:
+            placed_bets.append(
+                place_coldmath_bet(
+                    evaluation['candidate'],
+                    db_path=db_path,
+                    coldmath_budget_dollars=coldmath_budget_dollars,
+                )
+            )
+        except ValueError as exc:
+            logger.info('Skipping ColdMath auto-bet after re-check: %s', exc)
     return placed_bets
 
 
@@ -594,6 +923,23 @@ def _next_scan_label(scan_results: dict) -> str:
 
 
 def _compact_candidate_reason(candidate: dict, reason: str) -> str:
+    if _candidate_strategy(candidate) == 'coldmath':
+        if reason == 'station unverified':
+            return 'skipped (station unverified)'
+        ask_price = _candidate_trade_price(candidate)
+        if ask_price is not None and float(ask_price) < float(COLDMATH_CONFIG['min_yes_price']):
+            return (
+                f"price {int(round(float(ask_price) * 100))}¢ "
+                f"(below {int(round(COLDMATH_CONFIG['min_yes_price'] * 100))}¢ threshold)"
+            )
+        forecast_gap_f = _coerce_float(candidate.get('forecast_gap_f'))
+        if forecast_gap_f is not None and forecast_gap_f < float(COLDMATH_CONFIG['min_forecast_gap_f']):
+            return (
+                f'gap {forecast_gap_f:.1f}F '
+                f'(below {COLDMATH_CONFIG["min_forecast_gap_f"]:.1f}F threshold)'
+            )
+        return reason
+
     city_key = _candidate_city_key(candidate)
     if reason == 'station unverified':
         return 'skipped (station unverified)'
@@ -623,6 +969,19 @@ def _compact_candidate_reason(candidate: dict, reason: str) -> str:
     return reason
 
 
+def _strategy_prefix(strategy: str) -> str:
+    return '[COLDMATH]' if strategy == 'coldmath' else '[EDGE]'
+
+
+def _candidate_summary_label(candidate: dict) -> str:
+    bucket_code = _candidate_bucket_code(candidate)
+    if _candidate_strategy(candidate) == 'coldmath':
+        label = _candidate_label(candidate)
+        return f"{candidate['city_name']} {label}".strip()
+    label = f' {bucket_code}' if bucket_code else ''
+    return f"{candidate['city_name']}{label}"
+
+
 def format_auto_bet_notification(scan_results: dict, placed_bets: list[dict], db_path=None) -> str:
     budget_date = _scan_budget_date(scan_results=scan_results)
     total_spend = get_daily_spend(budget_date, db_path=db_path)
@@ -630,15 +989,23 @@ def format_auto_bet_notification(scan_results: dict, placed_bets: list[dict], db
 
     lines = [f'🤖 AUTO-BET FIRED — {_format_scan_time(scan_results)}', '']
     for bet in placed_bets:
+        strategy = _candidate_strategy(bet)
         lines.append(
-            f"✅ {bet['city_name']} {bet.get('bucket_code') or ''} ({_format_bucket_label(str(bet.get('bucket_label') or 'Unknown bucket'))})".rstrip()
+            f"✅ {_strategy_prefix(strategy)} {bet['city_name']} {bet.get('bucket_code') or ''} ({_format_bucket_label(str(bet.get('bucket_label') or 'Unknown bucket'))})".rstrip()
         )
         lines.append(
-            f"   {int(bet['contracts'])} contracts @ {_format_cents(float(bet['price']))} = ${float(bet['cost']):.2f} deployed"
+            f"   {int(bet['contracts'])} {str(bet.get('bet_side') or 'yes').upper()} contracts @ {_format_cents(float(bet['price']))} = ${float(bet['cost']):.2f} deployed"
         )
-        lines.append(
-            f"   Payout if win: ${float(bet['payout_if_win']):.2f} | Edge: {_format_edge(_coerce_float(bet.get('edge')))}"
-        )
+        if strategy == 'coldmath':
+            forecast_gap_f = _coerce_float(bet.get('forecast_gap_f'))
+            margin_text = f'{forecast_gap_f:.1f}F' if forecast_gap_f is not None else 'n/a'
+            lines.append(
+                f"   Payout if win: ${float(bet['payout_if_win']):.2f} | Margin: {margin_text}"
+            )
+        else:
+            lines.append(
+                f"   Payout if win: ${float(bet['payout_if_win']):.2f} | Edge: {_format_edge(_coerce_float(bet.get('edge')))}"
+            )
         lines.append(f"   Order: {_short_order_id(str(bet['order_id']))}")
         lines.append('')
 
@@ -652,7 +1019,7 @@ def format_auto_bet_notification(scan_results: dict, placed_bets: list[dict], db
 
 
 def format_no_auto_bet_notification(scan_results: dict, evaluations: list[dict] | None = None) -> str:
-    rows = evaluations if evaluations is not None else evaluate_auto_bet_candidates(scan_results)
+    rows = evaluations if evaluations is not None else evaluate_all_auto_bet_candidates(scan_results)
     lines = [f'📊 MORNING SCAN — {_format_scan_time(scan_results)}', '', 'No auto-bets placed. Candidates:']
 
     if not rows:
@@ -661,10 +1028,8 @@ def format_no_auto_bet_notification(scan_results: dict, evaluations: list[dict] 
         for evaluation in rows[:3]:
             candidate = evaluation['candidate']
             icon = '⏭' if evaluation['reason'] == 'station unverified' else '👀'
-            bucket_code = candidate.get('best_bucket_code')
-            label = f" {bucket_code}" if bucket_code else ''
             lines.append(
-                f"{icon} {candidate['city_name']}{label} — {_compact_candidate_reason(candidate, evaluation['reason'])}"
+                f"{icon} {_strategy_prefix(_candidate_strategy(candidate))} {_candidate_summary_label(candidate)} — {_compact_candidate_reason(candidate, evaluation['reason'])}"
             )
 
     lines.append('')

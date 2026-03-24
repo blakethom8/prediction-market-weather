@@ -67,12 +67,9 @@ def _favorite_market(markets: list[WeatherMarket]) -> WeatherMarket | None:
     )
 
 
-def run_morning_scan(target_date: date | None = None, db_path: str | None = None) -> dict:
-    """
-    Run the morning weather market scan for the configured settlement stations.
-    """
-    del db_path  # The morning scan reads live APIs directly and does not write to DuckDB.
-
+def _fetch_scan_context(
+    target_date: date | None,
+) -> tuple[date, datetime, dict[str, list[WeatherMarket]], dict[str, dict]]:
     resolved_date = target_date or _default_scan_date()
     scan_time_utc = datetime.now(UTC).replace(microsecond=0)
 
@@ -83,10 +80,199 @@ def run_morning_scan(target_date: date | None = None, db_path: str | None = None
         kalshi_markets = []
 
     markets_by_city = _group_markets_by_city(kalshi_markets, resolved_date)
+    validations_by_city = {
+        city_key: fetch_morning_validation(metadata.station_id)
+        for city_key, metadata in STATION_REGISTRY.items()
+    }
+    return resolved_date, scan_time_utc, markets_by_city, validations_by_city
+
+
+def _format_degree_value(value: float | int | None) -> str:
+    if value is None:
+        return 'n/a'
+    numeric = float(value)
+    if numeric.is_integer():
+        return str(int(numeric))
+    return f'{numeric:.1f}'.rstrip('0').rstrip('.')
+
+
+def _coldmath_confidence(gap_f: float) -> str:
+    if gap_f >= 12.0:
+        return 'very_high'
+    if gap_f >= 8.0:
+        return 'high'
+    if gap_f >= 5.0:
+        return 'medium'
+    return 'low'
+
+
+def _coldmath_market_play(
+    *,
+    city_key: str,
+    station_id: str,
+    forecast_high_f: float | int | None,
+    market: WeatherMarket,
+    min_yes_price: float,
+    min_forecast_gap_f: float,
+) -> dict | None:
+    if forecast_high_f is None or market.yes_ask is None or market.operator is None or market.threshold_low_f is None:
+        return None
+
+    forecast_value = float(forecast_high_f)
+    yes_ask = float(market.yes_ask)
+    bet_side: str | None = None
+    bet_price: float | None = None
+    threshold_f: float | None = None
+    forecast_gap_f = 0.0
+    label: str | None = None
+    thesis: str | None = None
+    contract_type = 'threshold'
+
+    if market.operator == '<=':
+        threshold_f = float(market.threshold_low_f)
+        forecast_gap_f = threshold_f - forecast_value
+        if forecast_gap_f < min_forecast_gap_f:
+            return None
+        bet_side = 'YES'
+        bet_price = yes_ask
+        label = f'below {_format_degree_value(threshold_f)}°F'
+        thesis = (
+            f'NWS={_format_temp(forecast_value)}, threshold={_format_temp(threshold_f)}, '
+            f'{_format_degree_value(forecast_gap_f)}°F margin - near-certain YES'
+        )
+    elif market.operator == '>=':
+        threshold_f = float(market.threshold_low_f)
+        forecast_gap_f = forecast_value - threshold_f
+        if forecast_gap_f < min_forecast_gap_f:
+            return None
+        bet_side = 'YES'
+        bet_price = yes_ask
+        label = f'above {_format_degree_value(threshold_f)}°F'
+        thesis = (
+            f'NWS={_format_temp(forecast_value)}, threshold={_format_temp(threshold_f)}, '
+            f'{_format_degree_value(forecast_gap_f)}°F margin - near-certain YES'
+        )
+    elif market.operator == 'between' and market.threshold_high_f is not None:
+        lower = float(market.threshold_low_f)
+        upper = float(market.threshold_high_f)
+        if lower <= forecast_value < upper:
+            return None
+        contract_type = 'bucket'
+        if forecast_value < lower:
+            threshold_f = lower
+            forecast_gap_f = lower - forecast_value
+            distance_phrase = 'below bucket range'
+        else:
+            threshold_f = upper
+            forecast_gap_f = forecast_value - upper
+            distance_phrase = 'above bucket range'
+        if forecast_gap_f < min_forecast_gap_f:
+            return None
+        bet_side = 'NO'
+        bet_price = round(1.0 - yes_ask, 4)
+        label = f'not {market.label}F'
+        thesis = (
+            f'NWS={_format_temp(forecast_value)}, bucket={market.label}, '
+            f'{_format_degree_value(forecast_gap_f)}°F {distance_phrase} - near-certain NO'
+        )
+    else:
+        return None
+
+    if bet_price is None or bet_side is None or threshold_f is None:
+        return None
+    if bet_price < min_yes_price or bet_price > 0.99:
+        return None
+
+    forecast_gap_f = round(forecast_gap_f, 1)
+    recommendation = 'BUY' if bet_price >= 0.88 and forecast_gap_f >= 10.0 else 'WATCH'
+    return {
+        'city': CITY_DISPLAY_NAMES[city_key],
+        'city_key': city_key,
+        'station_id': station_id,
+        'ticker': market.ticker,
+        'contract_type': contract_type,
+        'label': label,
+        'bet_side': bet_side,
+        'bet_price': round(bet_price, 4),
+        'yes_ask': round(yes_ask, 4),
+        'no_equivalent': round(1.0 - yes_ask, 4),
+        'forecast_f': round(forecast_value, 1),
+        'threshold_f': round(threshold_f, 1),
+        'forecast_gap_f': forecast_gap_f,
+        'confidence': _coldmath_confidence(forecast_gap_f),
+        'win_per_contract': round(1.0 - bet_price, 2),
+        'recommendation': recommendation,
+        'score': round(forecast_gap_f * bet_price, 4),
+        'thesis': thesis,
+    }
+
+
+def _scan_coldmath_from_context(
+    *,
+    markets_by_city: dict[str, list[WeatherMarket]],
+    validations_by_city: dict[str, dict],
+    min_yes_price: float,
+    min_forecast_gap_f: float,
+) -> list[dict]:
+    plays: list[dict] = []
+    for city_key, metadata in STATION_REGISTRY.items():
+        forecast_high = validations_by_city.get(city_key, {}).get('forecast_high_f')
+        for market in markets_by_city.get(city_key, []):
+            candidate = _coldmath_market_play(
+                city_key=city_key,
+                station_id=metadata.station_id,
+                forecast_high_f=forecast_high,
+                market=market,
+                min_yes_price=min_yes_price,
+                min_forecast_gap_f=min_forecast_gap_f,
+            )
+            if candidate is not None:
+                plays.append(candidate)
+
+    return sorted(
+        plays,
+        key=lambda row: (
+            row.get('forecast_gap_f') if row.get('forecast_gap_f') is not None else float('-inf'),
+            row.get('score') if row.get('score') is not None else float('-inf'),
+            1 if row.get('contract_type') == 'threshold' else 0,
+            row.get('ticker') or '',
+        ),
+        reverse=True,
+    )
+
+
+def scan_coldmath_plays(
+    target_date: date | None = None,
+    min_yes_price: float = 0.85,
+    min_forecast_gap_f: float = 8.0,
+    db_path=None,
+) -> list[dict]:
+    """
+    Scan for high-confidence weather contracts where the forecast is comfortably
+    on the winning side of the contract threshold or bucket range.
+    """
+    del db_path  # The scan reads live APIs directly and does not write to DuckDB.
+
+    _, _, markets_by_city, validations_by_city = _fetch_scan_context(target_date)
+    return _scan_coldmath_from_context(
+        markets_by_city=markets_by_city,
+        validations_by_city=validations_by_city,
+        min_yes_price=min_yes_price,
+        min_forecast_gap_f=min_forecast_gap_f,
+    )
+
+
+def run_morning_scan(target_date: date | None = None, db_path: str | None = None) -> dict:
+    """
+    Run the morning weather market scan for the configured settlement stations.
+    """
+    del db_path  # The morning scan reads live APIs directly and does not write to DuckDB.
+
+    resolved_date, scan_time_utc, markets_by_city, validations_by_city = _fetch_scan_context(target_date)
 
     cities: dict[str, dict] = {}
     for city_key, metadata in STATION_REGISTRY.items():
-        validation = fetch_morning_validation(metadata.station_id)
+        validation = validations_by_city[city_key]
         city_markets = markets_by_city.get(city_key, [])
         best_market, model_probability = choose_best_market(
             city_markets,
@@ -166,6 +352,12 @@ def run_morning_scan(target_date: date | None = None, db_path: str | None = None
         'scan_date': resolved_date.isoformat(),
         'scan_time_utc': scan_time_utc.isoformat().replace('+00:00', 'Z'),
         'cities': cities,
+        'coldmath_plays': _scan_coldmath_from_context(
+            markets_by_city=markets_by_city,
+            validations_by_city=validations_by_city,
+            min_yes_price=0.85,
+            min_forecast_gap_f=8.0,
+        ),
         'top_picks': top_picks,
     }
 
@@ -197,11 +389,44 @@ def _format_edge_cents(value: float | None) -> str:
     return f'{sign}{cents}¢'
 
 
+def _format_coldmath_contract_line(play: dict) -> list[str]:
+    side = str(play.get('bet_side') or 'YES').upper()
+    price = _format_price_cents(play.get('bet_price'))
+    profit_cents = int(round(float(play.get('win_per_contract') or 0.0) * 100))
+    icon = '✅' if play.get('recommendation') == 'BUY' else '👀'
+    lines = [
+        f"{icon} {play['city']} {play['label']} - {side} @ {price} (+{profit_cents}¢/contract)",
+    ]
+
+    forecast_gap = _format_degree_value(play.get('forecast_gap_f'))
+    threshold = _format_degree_value(play.get('threshold_f'))
+    if play.get('contract_type') == 'bucket':
+        lines.append(
+            f"   NWS={_format_temp(play.get('forecast_f'))} at {play.get('station_id')} - "
+            f"{forecast_gap}°F from bucket edge {threshold}°F"
+        )
+    else:
+        direction = 'below' if str(play.get('label') or '').startswith('below') else 'above'
+        lines.append(
+            f"   NWS={_format_temp(play.get('forecast_f'))} at {play.get('station_id')} - "
+            f"{forecast_gap}°F {direction} threshold"
+        )
+
+    deployed = round(float(play.get('bet_price') or 0.0) * 100.0, 2)
+    won = round(float(play.get('win_per_contract') or 0.0) * 100.0, 2)
+    roi = round((won / deployed) * 100.0, 1) if deployed > 0 else 0.0
+    lines.append(
+        f'   100 contracts = ${deployed:.2f} deployed -> win ${won:.2f} (+{roi:.0f}%)'
+    )
+    return lines
+
+
 def format_scan_report(scan_results: dict, include_all: bool = False) -> str:
     """
     Format morning scan results as a Telegram-ready plain-text report.
     """
     cities = scan_results.get('cities', {})
+    coldmath_plays = list(scan_results.get('coldmath_plays') or [])
     buys = [row for row in cities.values() if row.get('recommendation') == 'BUY']
     watches = [row for row in cities.values() if row.get('recommendation') == 'WATCH']
     skips = [row for row in cities.values() if row.get('recommendation') == 'SKIP']
@@ -258,6 +483,22 @@ def format_scan_report(scan_results: dict, include_all: bool = False) -> str:
             lines.append('No skips.')
             lines.append('')
 
+    lines.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    lines.append('🎯 COLDMATH LAYER - Near-Certain Plays')
+    lines.append('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    lines.append('These bets are designed to WIN at high confidence, small return per contract.')
+    lines.append('Build win rate. Scale up over time.')
+    lines.append('')
+    if coldmath_plays:
+        for play in coldmath_plays:
+            lines.extend(_format_coldmath_contract_line(play))
+            lines.append('')
+    else:
+        lines.append('No ColdMath plays found today - all forecast gaps are below 8°F.')
+        lines.append('')
+
+    lines.append('Auto-bet fires at 10 AM PDT.')
+    lines.append('Budget: $10 edge + $20 ColdMath = $30 total')
     while lines and lines[-1] == '':
         lines.pop()
     lines.append('')

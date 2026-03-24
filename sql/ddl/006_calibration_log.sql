@@ -4,6 +4,7 @@ create table if not exists ops.calibration_log (
     city_key varchar not null,
     station_id varchar not null,
     ticker varchar not null,
+    bet_strategy varchar default 'edge',
     live_order_id varchar,
     is_paper_bet boolean default false,
     our_forecast_f double,
@@ -19,8 +20,11 @@ create table if not exists ops.calibration_log (
     created_at_utc timestamp default current_timestamp
 );
 
+alter table ops.calibration_log add column if not exists bet_strategy varchar default 'edge';
+
 create or replace view ops.v_calibration_summary as
 select
+    bet_strategy,
     forecast_confidence,
     city_key,
     count(*) as total_bets,
@@ -30,4 +34,4 @@ select
     sum(edge_realized) as total_pnl
 from ops.calibration_log
 where actual_high_f is not null
-group by forecast_confidence, city_key;
+group by bet_strategy, forecast_confidence, city_key;

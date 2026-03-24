@@ -36,6 +36,7 @@ def _fetch_calibration_row(live_order_id: str, db_path=None) -> dict[str, Any] |
                 city_key,
                 station_id,
                 ticker,
+                bet_strategy,
                 live_order_id,
                 is_paper_bet,
                 our_forecast_f,
@@ -176,6 +177,7 @@ def record_bet_outcome(
     )
     realized_pnl = _coerce_float(updated_row.get('realized_pnl_dollars')) or 0.0
     log_id = str(existing['log_id']) if existing and existing.get('log_id') else live_order_id
+    bet_strategy = str(existing['bet_strategy']) if existing and existing.get('bet_strategy') else 'edge'
 
     con = connect(db_path=db_path)
     try:
@@ -188,6 +190,7 @@ def record_bet_outcome(
                 city_key,
                 station_id,
                 ticker,
+                bet_strategy,
                 live_order_id,
                 is_paper_bet,
                 our_forecast_f,
@@ -200,7 +203,7 @@ def record_bet_outcome(
                 market_was_right,
                 edge_realized,
                 notes
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''',
             [
                 log_id,
@@ -208,6 +211,7 @@ def record_bet_outcome(
                 market.city_key,
                 station_id,
                 updated_row['ticker'],
+                bet_strategy,
                 live_order_id,
                 False,
                 float(our_forecast_f),
