@@ -9,6 +9,7 @@ from ._markets import (
     WeatherMarket,
     choose_best_market,
     find_adjacent_market,
+    market_bucket_center,
     parse_weather_market,
 )
 
@@ -56,6 +57,16 @@ def _recommendation_for_city(
     return 'SKIP', 'Edge is too thin after confidence adjustment.'
 
 
+def _favorite_market(markets: list[WeatherMarket]) -> WeatherMarket | None:
+    priced_markets = [market for market in markets if market.yes_ask is not None]
+    if not priced_markets:
+        return None
+    return max(
+        priced_markets,
+        key=lambda market: (market.yes_ask if market.yes_ask is not None else float('-inf'), market.ticker),
+    )
+
+
 def run_morning_scan(target_date: date | None = None, db_path: str | None = None) -> dict:
     """
     Run the morning weather market scan for the configured settlement stations.
@@ -76,19 +87,26 @@ def run_morning_scan(target_date: date | None = None, db_path: str | None = None
     cities: dict[str, dict] = {}
     for city_key, metadata in STATION_REGISTRY.items():
         validation = fetch_morning_validation(metadata.station_id)
+        city_markets = markets_by_city.get(city_key, [])
         best_market, model_probability = choose_best_market(
-            markets_by_city.get(city_key, []),
+            city_markets,
             validation.get('forecast_high_f'),
             validation.get('forecast_confidence', 'unknown'),
         )
         adjacent_market = find_adjacent_market(
-            markets_by_city.get(city_key, []),
+            city_markets,
             best_market,
             validation.get('forecast_high_f'),
         )
+        favorite_market = _favorite_market(city_markets)
 
         ask = best_market.yes_ask if best_market is not None else None
         edge = None if ask is None or model_probability is None else round(model_probability - ask, 4)
+        observed_max = validation.get('observed_max_so_far_f')
+        forecast_high = validation.get('forecast_high_f')
+        obs_divergence_f = None
+        if observed_max is not None and forecast_high is not None:
+            obs_divergence_f = round(abs(float(observed_max) - float(forecast_high)), 1)
         recommendation, recommendation_reason = _recommendation_for_city(
             station_verified=metadata.settlement_verified,
             confidence=validation.get('forecast_confidence', 'unknown'),
@@ -103,19 +121,28 @@ def run_morning_scan(target_date: date | None = None, db_path: str | None = None
             recommendation_reason = str(validation['note'])
 
         cities[city_key] = {
+            'city_key': city_key,
             'city_name': CITY_DISPLAY_NAMES[city_key],
             'station_id': metadata.station_id,
+            'station_verified': metadata.settlement_verified,
             'forecast_high_f': validation.get('forecast_high_f'),
             'forecast_confidence': validation.get('forecast_confidence'),
             'observed_max_so_far_f': validation.get('observed_max_so_far_f'),
             'obs_count': validation.get('obs_count'),
+            'obs_forecast_divergence_f': obs_divergence_f,
             'validation_note': validation.get('note'),
             'best_bucket': best_market.ticker if best_market is not None else None,
             'best_bucket_code': best_market.bucket_code if best_market is not None else None,
             'best_bucket_label': best_market.label if best_market is not None else None,
+            'best_bucket_center_f': market_bucket_center(best_market),
             'best_bucket_ask': ask,
             'model_probability': model_probability,
             'edge': edge,
+            'market_favorite_bucket': favorite_market.ticker if favorite_market is not None else None,
+            'market_favorite_bucket_code': favorite_market.bucket_code if favorite_market is not None else None,
+            'market_favorite_label': favorite_market.label if favorite_market is not None else None,
+            'market_favorite_center_f': market_bucket_center(favorite_market),
+            'market_favorite_ask': favorite_market.yes_ask if favorite_market is not None else None,
             'adjacent_bucket': adjacent_market.ticker if adjacent_market is not None else None,
             'adjacent_bucket_label': adjacent_market.label if adjacent_market is not None else None,
             'recommendation': recommendation,

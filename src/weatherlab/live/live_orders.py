@@ -641,6 +641,7 @@ def fetch_live_orders(
     status_filter=None,
     strategy_id: str | None = None,
     kalshi_order_id: str | None = None,
+    live_order_id: str | None = None,
 ) -> list[dict]:
     """Return raw live order rows with optional status filter."""
 
@@ -661,6 +662,9 @@ def fetch_live_orders(
     if kalshi_order_id is not None:
         filters.append('lo.kalshi_order_id = ?')
         params.append(kalshi_order_id)
+    if live_order_id is not None:
+        filters.append('lo.live_order_id = ?')
+        params.append(live_order_id)
 
     where_sql = f"where {' and '.join(filters)}" if filters else ''
     query = f'''

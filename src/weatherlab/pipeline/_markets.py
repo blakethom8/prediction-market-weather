@@ -127,6 +127,14 @@ def format_bucket_label(
     return 'Unknown bucket'
 
 
+def market_bucket_center(market: WeatherMarket | None) -> float | None:
+    if market is None or market.operator is None or market.threshold_low_f is None:
+        return None
+    if market.operator == 'between' and market.threshold_high_f is not None:
+        return round((market.threshold_low_f + market.threshold_high_f) / 2.0, 1)
+    return float(market.threshold_low_f)
+
+
 def parse_weather_market(market: dict[str, Any]) -> WeatherMarket | None:
     ticker = str(market.get('ticker') or '').strip()
     if not ticker:

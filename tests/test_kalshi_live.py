@@ -52,7 +52,7 @@ class FakeSession:
         self.responses = list(responses)
         self.requests: list[dict[str, object]] = []
 
-    def request(self, method, url, params=None, headers=None, timeout=None):
+    def request(self, method, url, params=None, headers=None, timeout=None, json=None):
         self.requests.append(
             {
                 'method': method,
@@ -60,6 +60,7 @@ class FakeSession:
                 'params': params,
                 'headers': headers,
                 'timeout': timeout,
+                'json': json,
             }
         )
         return self.responses.pop(0)
@@ -170,6 +171,38 @@ class KalshiClientTests(unittest.TestCase):
                 client.fetch_market_snapshot('KXHIGHCHI-26MAR22-T70')
 
         self.assertIn('bad signature', str(caught.exception))
+
+    def test_place_order_posts_json_payload(self):
+        session = FakeSession([FakeResponse(200, {'order': {'order_id': 'order-123'}})])
+        client = KalshiClient(
+            key_id='dummy-key-id',
+            private_key_path='unused.pem',
+            session=session,
+            signature_padding='pkcs1v15',
+        )
+
+        with patch.object(client, '_build_auth_headers', return_value={'Accept': 'application/json'}):
+            payload = client.place_order(
+                ticker='KXHIGHMIA-26MAR24-B82.5',
+                client_order_id='auto-miami-1711200000',
+                count=12,
+                side='yes',
+                action='buy',
+                order_type='limit',
+                price_cents=39,
+            )
+
+        self.assertEqual(payload['order']['order_id'], 'order-123')
+        self.assertEqual(session.requests[0]['method'], 'POST')
+        self.assertEqual(session.requests[0]['json'], {
+            'ticker': 'KXHIGHMIA-26MAR24-B82.5',
+            'client_order_id': 'auto-miami-1711200000',
+            'count': 12,
+            'side': 'yes',
+            'action': 'buy',
+            'type': 'limit',
+            'yes_price': 39,
+        })
 
 
 class KalshiLiveSyncTests(unittest.TestCase):

@@ -233,6 +233,32 @@ class KalshiClient:
                 return self._normalize_market(market)
         return None
 
+    def place_order(
+        self,
+        *,
+        ticker: str,
+        client_order_id: str,
+        count: int,
+        side: str = 'yes',
+        action: str = 'buy',
+        order_type: str = 'limit',
+        price_cents: int | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            'ticker': ticker,
+            'client_order_id': client_order_id,
+            'count': int(count),
+            'side': side,
+            'action': action,
+            'type': order_type,
+        }
+        if order_type == 'limit':
+            if price_cents is None:
+                raise ValueError('price_cents is required for limit orders.')
+            payload['yes_price' if side == 'yes' else 'no_price'] = int(price_cents)
+
+        return self._request_json('POST', '/portfolio/orders', json_body=payload)
+
     def _normalize_market(
         self,
         payload: dict[str, Any],
@@ -327,9 +353,10 @@ class KalshiClient:
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         try:
-            return self._request_json_once(method, path, params=params)
+            return self._request_json_once(method, path, params=params, json_body=json_body)
         except KalshiAuthError:
             if self.signature_padding != 'pss' or method.upper() != 'GET':
                 raise
@@ -341,7 +368,7 @@ class KalshiClient:
         original_padding = self.signature_padding
         self.signature_padding = 'pkcs1v15'
         try:
-            payload = self._request_json_once(method, path, params=params)
+            payload = self._request_json_once(method, path, params=params, json_body=json_body)
         except KalshiAuthError:
             self.signature_padding = original_padding
             raise
@@ -357,18 +384,25 @@ class KalshiClient:
         path: str,
         *,
         params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         full_url = self._build_url(path)
         headers = self._build_auth_headers(method, path)
+        if json_body is not None:
+            headers['Content-Type'] = 'application/json'
+
+        request_kwargs: dict[str, Any] = {
+            'method': method,
+            'url': full_url,
+            'params': params,
+            'headers': headers,
+            'timeout': self.timeout_seconds,
+        }
+        if json_body is not None:
+            request_kwargs['json'] = json_body
 
         try:
-            response = self.session.request(
-                method=method,
-                url=full_url,
-                params=params,
-                headers=headers,
-                timeout=self.timeout_seconds,
-            )
+            response = self.session.request(**request_kwargs)
         except requests.RequestException as exc:
             raise KalshiAPIError(f'Kalshi request failed for {path}: {exc}') from exc
 
