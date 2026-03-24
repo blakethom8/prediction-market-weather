@@ -137,16 +137,125 @@ Running Strategy A (broad) and Strategy B (focused) in parallel on the same day 
 
 ---
 
-## Open Questions (to resolve with data)
+## Timing & When to Bet
 
-- [ ] Does Reagan National (DCA) actually run 5-8°F warmer than metro NWS? **Test with 5+ settled DC bets.**
-- [ ] Is the PHL airport bias consistent or seasonal?
-- [ ] Does LAX run 5-10°F cooler than inland LA metro? **Critical for LA bets.**
-- [ ] Does NWS or Open-Meteo have better directional accuracy for our cities?
-- [ ] At what volume threshold is a market "informed" enough to trust over our model?
-- [ ] What is our fair probability model's actual calibration? (need 30+ settled bets)
+### Don't bet at midnight on same-day markets (Lesson: March 23, 2026)
+
+**This may be the most actionable lesson from our first real session.**
+
+We placed all bets between midnight and 1:30 AM PDT on March 23 markets. Miami was forecast at 79°F by NWS at midnight. By afternoon, the NWS airport forecast updated to 83°F. The market was pricing 83-84° at 59¢ all along — it was already pricing in forecast information we didn't have.
+
+**The problem:** Overnight NWS forecasts are the least reliable point in the forecast cycle. Models run at 00Z and 12Z UTC. By the time the 12Z (noon UTC = 5 AM PDT) model run assimilates overnight observations, the forecast often shifts materially. By 2-4 PM local time, forecasters have also issued afternoon updates incorporating the morning's actual temperature trajectory.
+
+**Optimal betting window: 2–4 PM local time on the market day.**
+- NWS has issued its afternoon forecast update
+- Morning observations are assimilated into models
+- You can see how temps are actually tracking intraday
+- Only 4–6 hours to close instead of 17+
+- Market may still misprice afternoon information — that's your edge window
+
+**When early betting makes sense (exceptions):**
+- Screaming structural mispricing that won't close (e.g. 1¢ on a city forecast to be 15°F below threshold)
+- You have strong reason to believe the overnight forecast is stable (clear, calm, high-pressure day)
+- You're buying very cheap options where the forecast shift risk is priced in
 
 ---
 
-*Last updated: 2026-03-23*
+### Forecast Reliability by Time of Day
+
+| Time | NWS Reliability | Notes |
+|---|---|---|
+| Midnight | Low | Overnight model run, hasn't assimilated day's obs |
+| 6 AM | Low-Medium | 12Z model run may have updated; still early |
+| Noon | Medium | Afternoon NWS discussion out; morning temps known |
+| 2–4 PM | High | Afternoon forecast update; trajectory clear for the day |
+| 6 PM+ | Very High | High likely already occurred; market pricing near-certain |
+
+---
+
+## Market Structure Lessons
+
+### The 1¢ under-threshold bet structure (Discovered: March 23, 2026)
+
+When the market prices a "high will be below X°F" contract at 1¢, it's saying there's roughly a 1% chance of that outcome. On cold/rainy days, NWS forecasts often point to temperatures well below major thresholds, and the market systematically underprices these because:
+1. Retail traders focus on the "interesting" mid-range buckets
+2. Low-volume contracts get less market-maker attention
+3. The 1¢ floor means any non-zero probability bet gets the same price
+
+**The opportunity:** On days where NWS clearly forecasts temps 10°F+ below a threshold, the 1¢ YES contracts may be the best risk/reward in the market. $2 can return $200.
+
+**The caution:** The settlement station may differ from the forecast point. Airport stations sometimes run warmer. Always verify the specific station forecast, not just the metro.
+
+**Example from March 23:**
+- DC <67°: market at 1¢, NWS Reagan = 52°F (15°F below threshold) → likely WIN
+- Philly <58°: market at 1¢, NWS PHL = 51°F (7°F below threshold) → likely WIN
+- Boston <36°: market at 1¢, NWS Logan = 45°F (9°F ABOVE threshold) → LOSS
+- The difference: Boston's Logan Airport coastal warmth made the metro NWS forecast irrelevant
+
+---
+
+### Market vs Model disagreement signals
+
+**When market diverges from your model by >10¢:**
+- If volume is HIGH (>5,000 contracts): market is almost certainly right. Find out why.
+- If volume is LOW (<1,000 contracts): could be genuine mispricing. Investigate.
+- Miami example: market priced 83-84° at 59¢ while our model said 79°F. High volume. Market was right — the afternoon NWS update confirmed 83°F.
+
+**When market agrees with your model (<5¢ difference):**
+- Confirmation, but lower expected edge
+- DC/Philly at 1¢ were market-agreement bets: market said <1% chance, our model said ~40-60% chance — that's a genuine disagreement worth betting
+
+---
+
+## City-Specific Notes
+
+### Boston / Logan Airport
+- Logan sits on a peninsula in Boston Harbor
+- Harbor heat retention makes Logan run **dramatically warmer** than metro in winter/spring
+- On March 23: metro NWS said 35°F with sleet. Logan actually ~45°F. Gap = 10°F.
+- **Rule: Never bet Boston below-threshold contracts in winter/spring precip events.** Logan will always be warmer than metro.
+- In summer: Logan runs COOLER than metro (ocean influence reverses)
+
+### Miami / MIA Airport
+- Inland enough that airport temps are close to metro
+- But: NWS morning forecasts can shift significantly by afternoon on sunny days as the sea breeze timing changes
+- March 23: midnight NWS = 79°F → afternoon NWS = 83°F. The market knew before we did.
+- **Rule: For Miami sunny day forecasts, trust the afternoon NWS over midnight. Market often prices the afternoon outcome correctly at midnight.**
+
+### Washington DC / Reagan National (DCA)
+- DCA runs warm in urban heat island — but on cold rainy days, this is less relevant
+- Cold front days with rain: metro NWS and DCA tend to agree (both just cold)
+- Warm sunny days: DCA runs 5-8°F warmer than metro
+- March 23: both metro and DCA showed ~52°F — cold front day, bias minimal
+
+### Houston / Settlement Station TBD
+- Open question: Kalshi settles KXHIGHTHOU at Hobby (HOU) or Bush Intercontinental (IAH)?
+- On March 23: NWS at HOU said 84°F but market priced >83° at ~0¢ — contradiction needs resolution
+- **TODO: Verify settlement station from Kalshi contract rules before betting Houston again**
+
+---
+
+## Open Questions (to resolve with data)
+
+- [ ] Does Reagan National (DCA) actually run 5-8°F warmer than metro NWS? **March 23 cold front day showed minimal bias — need warm sunny day data.**
+- [ ] Is the PHL airport bias consistent or seasonal?
+- [ ] Does LAX run 5-10°F cooler than inland LA metro? **March 23: NWS LAX said 70°F — need to compare to actual settlement.**
+- [ ] Does NWS or Open-Meteo have better directional accuracy for our cities?
+- [ ] At what volume threshold is a market "informed" enough to trust over our model?
+- [ ] What is our fair probability model's actual calibration? (need 30+ settled bets)
+- [ ] What is the Houston Kalshi settlement station — Hobby (HOU) or Bush Intercontinental (IAH)?
+- [ ] How much does NWS forecast shift between midnight and afternoon on sunny vs rainy days? (Miami showed 4°F shift on sunny day)
+- [ ] Is the 1¢ under-threshold structure systematically mispriced, or was March 23 an anomaly?
+
+---
+
+## Session Log
+
+| Date | Key Lesson | Bets | Result |
+|---|---|---|---|
+| 2026-03-23 | Midnight forecasts unreliable; Miami shifted 79→83°F; Boston Logan +10°F vs metro; 1¢ threshold bets on DC/Philly may be structural edge | 8 real + 21 paper | Pending (NWS report March 24 AM) |
+
+---
+
+*Last updated: 2026-03-23 17:25 PDT*
 *Add new insights after each settling cycle.*
