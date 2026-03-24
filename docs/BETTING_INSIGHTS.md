@@ -161,15 +161,47 @@ We placed all bets between midnight and 1:30 AM PDT on March 23 markets. Miami w
 
 ---
 
+### Optimal Betting Windows by City Time Zone
+
+**The core problem:** Daily high temps occur at different local times. By the time you bet, some cities' highs are already recorded. The market prices that in fast.
+
+East Coast cities (EDT = PDT + 3h):
+- Peak temp: 2–4 PM EDT = **11 AM – 1 PM PDT**
+- Market prices it in: by ~2 PM EDT = **11 AM PDT**
+- **Bet East Coast cities before 11 AM PDT**
+
+Central cities (CDT = PDT + 2h):
+- Peak temp: 2–4 PM CDT = **12 PM – 2 PM PDT**
+- **Bet Chicago/Houston/Dallas/Atlanta before 12 PM PDT**
+
+West Coast cities:
+- Peak temp: 2–4 PM PDT
+- Market prices it in: by ~4 PM PDT
+- **Bet LA/Seattle before 2 PM PDT**
+
+### Recommended daily workflow
+
+| Time (PDT) | Action |
+|---|---|
+| **8–9 AM** | Morning scan — check NWS forecasts, identify candidates. Don't bet yet. Fix any data issues. |
+| **9–10 AM** | Validate NWS via ASOS observed temps. If morning obs already 10°F off from forecast, flag it. |
+| **10–11 AM** | **Primary East Coast betting window.** DC, Philly, NYC, Boston, Atlanta. Forecast reliable, high not yet recorded. |
+| **11 AM – 12 PM** | **Central cities window.** Chicago, Houston, Dallas. |
+| **12–1 PM** | **West Coast window.** LA, Seattle. Also last chance for Central. |
+| **After 2 PM PDT** | East Coast highs are IN. Market has priced them. Don't bet East Coast. West Coast may still have small windows. |
+| **After 4 PM PDT** | All highs recorded. Market fully priced. No new opportunities. |
+
 ### Forecast Reliability by Time of Day
 
-| Time | NWS Reliability | Notes |
-|---|---|---|
-| Midnight | Low | Overnight model run, hasn't assimilated day's obs |
-| 6 AM | Low-Medium | 12Z model run may have updated; still early |
-| Noon | Medium | Afternoon NWS discussion out; morning temps known |
-| 2–4 PM | High | Afternoon forecast update; trajectory clear for the day |
-| 6 PM+ | Very High | High likely already occurred; market pricing near-certain |
+| Time (PDT) | NWS Reliability | Market Efficiency | Sweet Spot? |
+|---|---|---|---|
+| Midnight | Low | Low | ❌ Avoid |
+| 6 AM | Low-Medium | Low | ❌ Too early |
+| 8–9 AM | Medium | Low | ✅ Scan only |
+| 10–11 AM | High | Medium | ✅ Best for East Coast |
+| 12–1 PM | High | Medium-High | ✅ Best for Central/West |
+| 2–3 PM | Very High | High (East Coast done) | ⚠️ West Coast only |
+| 4 PM+ | Certain | Near-certain | ❌ No edge left |
 
 ---
 
@@ -249,11 +281,77 @@ When the market prices a "high will be below X°F" contract at 1¢, it's saying 
 
 ---
 
+## NWS Data Sourcing Problem — DC (Discovered: March 23, 2026)
+
+**Critical model bug.** Our NWS forecast for DC showed 52°F using Reagan National coordinates (38.8521, -77.0377). Actual high at settlement: **67-68°F**. That is a 15°F miss — not a forecast error, a data sourcing error.
+
+**What likely happened:** The NWS `/points/{lat},{lon}` API returns the forecast office and grid cell for that location. Reagan National sits at a grid cell boundary, and the API may have been returning the forecast for a grid cell that doesn't correspond to the actual KDCA observation station. The NWS forecast grid and the official climatological observation station are different things.
+
+**The fix:**
+- Don't rely solely on `api.weather.gov/points` lat/lon lookup for settlement temperature
+- Cross-reference with the actual ASOS/AWOS station ID (KDCA for Reagan, KPHL for Philly, etc.)
+- Use the NWS hourly obs API or MesoWest for actual station readings: `https://api.weather.gov/stations/KDCA/observations/latest`
+- Or use the station-specific forecast: `https://forecast.weather.gov/MapClick.php?CityName=Reagan+National&state=VA&site=LWX&textField1=38.8521&textField2=-77.0377`
+
+**Station IDs for each settlement city:**
+
+| City | Kalshi Series | ASOS Station | NWS Office |
+|---|---|---|---|
+| DC / Reagan National | KXHIGHTDC | KDCA | LWX |
+| Miami / MIA | KXHIGHMIA | KMIA | MFL |
+| Philadelphia / PHL | KXHIGHPHIL | KPHL | PHI |
+| Boston / Logan | KXHIGHTBOS | KBOS | BOX |
+| NYC / Central Park | KXHIGHNY | KNYC | OKX |
+| Chicago / Midway | KXHIGHCHI | KMDW | LOT |
+| LA / LAX | KXHIGHLAX | KLAX | LOX |
+| Houston / (TBD) | KXHIGHTHOU | KHOU or KIAH | HGX |
+| Seattle / Sea-Tac | KXHIGHTSEA | KSEA | SEW |
+| Atlanta / Hartsfield | KXHIGHTATL | KATL | FFC |
+
+**To get actual observed high for today:**
+```
+GET https://api.weather.gov/stations/KDCA/observations?start=2026-03-23T00:00:00Z&end=2026-03-23T23:59:59Z&limit=50
+```
+Parse `temperature.value` (Celsius, convert to °F) and take the max.
+
+**Priority fix:** Update the model to validate forecast against observed temps at the ASOS station during the day. If the observed temp at 11 AM is already 62°F and NWS says high of 52°F — something is wrong, don't bet on that forecast.
+
+---
+
+## March 23, 2026 — Final Settlement Results
+
+NWS market-implied outcomes (from Kalshi pricing at ~5:30 PM PDT):
+
+| City | NWS Forecast (our model) | Actual High (market-implied) | Miss |
+|---|---|---|---|
+| Miami | 83°F | 81-82°F | -1 to -2°F (close) |
+| DC | 52°F | **67-68°F** | **+15-16°F** ← data sourcing bug |
+| Philly | 51°F | 58-59°F | +7-8°F (partial airport bias) |
+| Boston | 45°F | 38-39°F | -6-7°F (Logan ran COOL, not warm) |
+| NYC | 48°F | <54°F | Confirmed correct direction |
+| Chicago | 52°F | 40-41°F | -11-12°F ← NWS badly wrong |
+| LA | 70°F | <76°F | Correct direction |
+| Houston | 84°F | 83-84°F | ~correct but threshold miss |
+
+**Boston surprise:** Logan ran COOLER than metro NWS (38-39°F vs forecast of 45°F). The harbor heat retention thesis was wrong for this specific storm type. Sleet/wintry mix suppressed Logan more than the metro. Update our Boston mental model.
+
+**Real money P&L (estimated):**
+- Wins: LA <76° (Blake) — ~$0.40 profit
+- Losses: everything else — ~-$28
+- Net: approximately **-$28 on first session**
+
+**Paper bet strategy winners (preliminary):**
+- Strategy C (market follower) — would have won on Miami, lost on DC/Philly/Boston → mixed
+- Strategy A/D (NWS-based) — would have won on DC/Philly IF model was correct, but model was wrong → all losses
+- No strategy clearly "won" because the underlying data was flawed
+
+---
+
 ## Session Log
 
 | Date | Key Lesson | Bets | Result |
 |---|---|---|---|
-| 2026-03-23 | Midnight forecasts unreliable; Miami shifted 79→83°F; Boston Logan +10°F vs metro; 1¢ threshold bets on DC/Philly may be structural edge | 8 real + 21 paper | Pending (NWS report March 24 AM) |
+| 2026-03-23 | NWS data sourcing bug (DC miss = 15°F); midnight forecasts unreliable; Boston Logan ran COOL not warm in wintry mix; market was right on everything | 8 real + 21 paper | ~-$28 real money; LA <76 only win |
 
 ---
 
