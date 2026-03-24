@@ -273,7 +273,7 @@ def fetch_station_observations(station_id: str, date_local: date) -> list[dict]:
             params={
                 'start': _isoformat_z(start_utc),
                 'end': _isoformat_z(end_utc),
-                'limit': 50,
+                'limit': 200,
             },
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
