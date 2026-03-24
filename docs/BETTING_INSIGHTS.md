@@ -357,3 +357,8 @@ NWS market-implied outcomes (from Kalshi pricing at ~5:30 PM PDT):
 
 *Last updated: 2026-03-23 17:25 PDT*
 *Add new insights after each settling cycle.*
+
+
+## March 23, 2026 Settlement Review
+
+- Philly: model missed by -6.0°F versus KPHL actual 52.0°F.

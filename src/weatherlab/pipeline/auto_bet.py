@@ -643,7 +643,8 @@ def _place_candidate_bet(
     city_key = _candidate_city_key(candidate_with_db)
     ticker = _candidate_ticker(candidate_with_db)
     side = _candidate_trade_side(candidate_with_db)
-    client_order_id = f'auto-{strategy}-{city_key}-{int(time_module.time())}'
+    import random as _random
+    client_order_id = f'auto-{strategy}-{city_key}-{int(time_module.time())}-{_random.randint(1000,9999)}'
     price_cents = int(round(float(ask_price) * 100))
     client = KalshiClient(timeout_seconds=10.0)
     payload = client.place_order(
@@ -836,8 +837,11 @@ def run_auto_betting_session(scan_results: dict, db_path=None, *, coldmath_budge
                     edge_budget_dollars=edge_budget_dollars,
                 )
             )
-        except ValueError as exc:
-            logger.info('Skipping edge auto-bet after re-check: %s', exc)
+        except (ValueError, Exception) as exc:
+            if 'order_already_exists' in str(exc) or '409' in str(exc):
+                logger.info('Skipping edge bet — duplicate order id (harmless): %s', exc)
+            else:
+                logger.info('Skipping edge auto-bet after re-check: %s', exc)
 
     for evaluation in evaluate_coldmath_auto_bet_candidates(
         scan_results,
@@ -856,8 +860,11 @@ def run_auto_betting_session(scan_results: dict, db_path=None, *, coldmath_budge
                     coldmath_budget_dollars=coldmath_budget_dollars,
                 )
             )
-        except ValueError as exc:
-            logger.info('Skipping ColdMath auto-bet after re-check: %s', exc)
+        except (ValueError, Exception) as exc:
+            if 'order_already_exists' in str(exc) or '409' in str(exc):
+                logger.info('Skipping ColdMath bet — duplicate order id (harmless): %s', exc)
+            else:
+                logger.info('Skipping ColdMath auto-bet after re-check: %s', exc)
     return placed_bets
 
 
