@@ -12,7 +12,7 @@ from weatherlab.pipeline.learning import (
     run_settlement_and_learning,
     write_daily_memory,
 )
-from weatherlab.settlement.kalshi_settlement import fix_march23_settlements
+from weatherlab.settlement.kalshi_settlement import fix_march23_settlements, settle_open_paper_bets
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:

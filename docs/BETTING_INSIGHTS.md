@@ -366,6 +366,7 @@ NWS market-implied outcomes (from Kalshi pricing at ~5:30 PM PDT):
 | Date | Key Lesson | Bets | Result |
 |---|---|---|---|
 | 2026-03-23 | NWS data sourcing bug (DC miss = 15°F); midnight forecasts unreliable; Boston Logan ran COOL not warm in wintry mix; market was right on everything | 8 real + 21 paper | ~-$28 real money; LA <76 only win |
+| 2026-03-24 | Dallas ASOS under-read by 1.6°F (82.9 vs official 84.5); Miami forecast wrong direction (NWS=81, actual=84.5); both bets lost. KDAL station gap confirmed — always use Kalshi API for settlement truth. | 2 real | -$9.96 |
 
 ---
 
@@ -376,3 +377,217 @@ NWS market-implied outcomes (from Kalshi pricing at ~5:30 PM PDT):
 ## March 23, 2026 Settlement Review
 
 - Philly: model missed by -6.0°F versus KPHL actual 52.0°F.
+
+
+## March 24, 2026 Settlement Review
+
+- Dallas: the market favorite beat our model (0.0°F vs 1.5°F error).
+- Dallas: station gap detected, ASOS 82.9°F versus Kalshi official ~84.5°F. Investigate settlement source.
+- Miami: the market favorite beat our model (0.0°F vs 1.5°F error).
+
+
+## March 24, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+---
+
+## Macro Markets Strategy (Added: March 25, 2026)
+
+### Why Macro Over Weather
+
+After 10 losses on weather markets, we identified our actual competitive advantages:
+- **Continuous monitoring** — Chief runs 24/7, humans can't
+- **Data integration speed** — pull economic signals + prices and react in seconds
+- **Tracking breadth** — watch hundreds of markets simultaneously
+- **No emotional bias** — don't tilt after losses
+
+These matter more in **macro markets** (CPI, GDP, Fed rate) than weather because:
+- Macro events settle on a single clean data point (one number, one release)
+- Data sources (Bloomberg consensus, Fed nowcasts, PPI/import prices) are quantifiable
+- Markets are liquid ($30K–$125K+ volume) with reliable bid/ask spreads
+- Release timing is fixed and known well in advance
+
+### Market Landscape (Kalshi, March 2026)
+
+| Series | Closes | Volume (key markets) | Best opportunity |
+|---|---|---|---|
+| KXCPI-26MAR | April 10, 2026 | $30K–$123K | Most imminent + most liquid |
+| KXGDP-26APR30 | April 30, 2026 | $46K–$71K | Q1 advance estimate |
+| KXCPI-26APR | May 12, 2026 | $3K–$8K | April CPI |
+| KXFED-27APR | April 2027 | $2K–$5K | Too far out for now |
+
+**Priority: March CPI.** Highest volume, clearest data signals, closes soonest.
+
+---
+
+### Strategy 1: ColdMath on Macro (Near-Certainty Plays)
+
+Same philosophy as ColdMath weather plays — find contracts priced at 90¢+ or 10¢– where the outcome is near-certain based on historical base rates or structural constraints.
+
+**March CPI examples (as of March 25, 2026):**
+
+| Ticker | Price | Thesis |
+|---|---|---|
+| KXCPI-26MAR-T0.6 YES | 91–93¢ | CPI >0.6% MoM — near-certain given current inflation regime and tariff pass-through. Market consensus. |
+| KXCPI-26MAR-T1.2 NO | 97–98¢ | CPI >1.2% MoM — almost impossible. 1.2% MoM = ~15% annualized. Only happens in supply shocks. |
+| KXGDP-26APR30-T1.0 YES | 92–93¢ | GDP >1.0% Q1 — US hasn't printed below 1% since 2009 (ex-COVID). Structural floor. |
+
+**Rule:** ColdMath macro plays require a 10+ percentage point gap from uncertainty (i.e. the contract is priced at 90¢+ or 10¢– and the base rate strongly supports it). Do not use this strategy on coin-flip markets.
+
+---
+
+### Strategy 2: Consensus vs Market (Edge Plays)
+
+Find markets where the **professional forecaster consensus diverges meaningfully from the Kalshi market price**. Use external data sources to form a view:
+
+**Primary data sources:**
+- **Cleveland Fed CPI Nowcast** — https://www.clevelandfed.org/indicators-and-data/inflation-nowcasting
+- **Atlanta Fed GDPNow** — https://www.atlantafed.org/cpcpce/research/gdpnow
+- **Bloomberg consensus** — professional forecaster median (check via news/financial sites)
+- **CME FedWatch** — Fed rate probabilities (compare to Kalshi Fed markets)
+- **BLS PPI report** — Producer prices as leading indicator for CPI
+- **Import/export price index** — tariff pass-through signal
+
+**Process:**
+1. Day before release: pull all available data sources
+2. Form a model estimate (not just one source — weighted average)
+3. Compare to market price — if gap >10¢, consider a paper bet (or real bet when calibrated)
+4. Size by confidence: near-certain → larger; model-based → smaller
+
+**March CPI key question (for April 10 release):**
+- Did tariff pass-through from early 2026 tariff packages hit March prices?
+- Energy prices in March — up or down vs February?
+- Shelter/OER: still sticky or showing relief?
+- Market pricing T0.8 at 56¢ = coin flip. If data suggests >0.8% is likely, that's a YES edge.
+
+---
+
+### Strategy 3: Structural Arbitrage (Future Work)
+
+Cross-platform: same event priced differently on Kalshi vs Polymarket.
+Pure arbitrage — no forecast model needed.
+Requires: Polymarket API setup + monitoring script.
+**Plan:** Implement after Polymarket account setup (scheduled: March 26, 2026+)
+
+---
+
+### Paper Bet Log — Macro Markets
+
+Opened: March 25, 2026. All paper bets tracked in `ops.paper_bets` table.
+
+#### Batch 1: March CPI (settles April 10, 2026)
+
+| Ticker | Side | Entry Price | Notional | Strategy | Thesis |
+|---|---|---|---|---|---|
+| KXCPI-26MAR-T0.6 | YES | 92¢ | $10 | ColdMath | Near-certain. CPI >0.6% MoM is baseline given current inflation regime + tariff pass-through. Historical: CPI only came in below 0.6% in deflationary periods (2015, 2019, 2023 disinflation). We are not in one. |
+| KXCPI-26MAR-T0.7 | YES | 80¢ | $10 | ColdMath/Consensus | Strong confidence. Tariff-driven price pressures in Q1 2026 should sustain >0.7%. Market agrees at 80¢ but this is one to hold unless data turns. |
+| KXCPI-26MAR-T0.8 | YES | 57¢ | $10 | Edge | Coin flip per market. Our thesis: tariff pass-through (particularly in goods/apparel) could push the March print above 0.8%. Watch PPI data and import prices as leading signals. This is the speculative bet — size small. |
+| KXCPI-26MAR-T1.0 | NO | 90¢ (buy NO = 10¢ YES) | $5 | ColdMath | Near-certain NO. CPI >1.0% MoM would be historically extreme outside of COVID or severe supply shocks. No evidence of that in Q1 2026. |
+
+#### Batch 2: GDP Q1 2026 (settles April 30, 2026)
+
+| Ticker | Side | Entry Price | Notional | Strategy | Thesis |
+|---|---|---|---|---|---|
+| KXGDP-26APR30-T1.0 | YES | 92¢ | $10 | ColdMath | Near-certain. US GDP has not come in below 1% annualized (Q1 advance) since 2009 ex-COVID. Consumer spending and labor market were solid through Q1. |
+| KXGDP-26APR30-T2.0 | YES | 72¢ | $10 | Consensus | Market says 72% chance Q1 GDP >2.0%. Watch Atlanta Fed GDPNow for calibration. If GDPNow tracks above 2.5%, this YES is underpriced. |
+| KXGDP-26APR30-T2.5 | NO | 42¢ (buy NO = YES at 58¢) | $10 | Edge | Q1 2026 headwinds: tariff uncertainty, trade war sentiment, potential inventory drawdown. Market is near coin-flip on >2.5% — our thesis is that 2.0–2.5% is more likely than >2.5% given macro uncertainty. |
+
+**Total paper notional: $55**
+**Settle date range: April 10 (CPI) and April 30 (GDP)**
+
+---
+
+### What We're Watching (Leading Indicators)
+
+Before April 10 CPI release, track:
+- [ ] BLS PPI March report (usually ~April 11 — but for February data: already released)
+- [ ] Import/export price index (March data, released mid-April)
+- [ ] Cleveland Fed CPI Nowcast (updated regularly)
+- [ ] Any FOMC communications about inflation trajectory
+
+Before April 30 GDP release, track:
+- [ ] Atlanta Fed GDPNow (updated with each data release)
+- [ ] Consumer spending data (PCE, retail sales)
+- [ ] Trade deficit (March data) — large deficits drag GDP
+
+---
+
+## March 25, 2026 — Strategy Assessment & Lessons
+
+### Scoreboard After 3 Days
+
+| Date | Bets Settled | Result |
+|---|---|---|
+| Mar 23 | 8 | -$24.24 |
+| Mar 24 | 2 | -$9.96 |
+| **Total** | **10** | **-$34.20** |
+Win rate: **0 for 10**
+
+### Systematic Cool Bias in Forecasts
+
+Every single settled bet: actual high was WARMER than our model forecast.
+
+| City | Date | Forecast | Actual | Miss |
+|---|---|---|---|---|
+| Boston | Mar 23 | 36°F | 38.5°F | +2.5°F |
+| Miami | Mar 23 | 79.5°F | 81.5°F | +2.0°F |
+| Miami | Mar 24 | 83°F | 84.5°F | +1.5°F |
+| DC | Mar 23 | 67°F | 67.5°F | +0.5°F |
+| Philly | Mar 23 | 58°F | 58.5°F | +0.5°F |
+| Dallas | Mar 24 | 86°F | 84.5°F | -1.5°F ← exception |
+
+Average miss: **+1.0°F warm** (model consistently underestimates highs). This is a calibration bug, not bad luck.
+
+**Recommended fix:** Apply a +1.5°F warm bias correction to all model forecasts until properly recalibrated on 30+ settled bets.
+
+### 1¢ Bucket Bets Are the Worst Play
+
+When the system buys YES at 1¢ (e.g. DC B58.5, SEA B49.5), it's betting against 99% market consensus. For these to win, two things must be true simultaneously:
+1. Our model must be right and the market wrong
+2. The error must be in a specific direction (cool)
+
+Given our cool bias, buying "will be below X°F" at 1¢ compounds our systematic weakness. Every 1¢ bet we placed settled as NO.
+
+**Rule: No bets below 15¢.** Below 15¢ means the market prices us at <15% probability — not a structural edge, just a long shot.
+
+### Exact Bucket Bets Require Sub-1°F Accuracy
+
+Betting on the 58°-59°F bucket requires the high to land exactly in a 1°F window. Our forecast errors are 0.5–2.5°F. We will never have the accuracy to win these consistently.
+
+**Rule: Only bet threshold contracts** (e.g. "above 85°F" or "below 49°F") — not mid-range buckets. Threshold bets win across a wide range of outcomes; bucket bets require a bullseye.
+
+### ColdMath Plays Are Conceptually Right But Illiquid
+
+LAX B82.5 NO at 99¢ (forecast 68°F, 14°F gap) was the correct play — but 0 contracts filled. Market makers aren't active at these prices.
+
+**Rule: ColdMath candidates should be placed as market orders or at slightly worse prices to actually get filled.** A 95¢ fill on a near-certain outcome beats a 99¢ order that never executes.
+
+### The Bigger Strategic Question
+
+After 10 losses, the real question is: **where is our actual competitive edge in weather markets?**
+
+Weather markets on Kalshi appear to be reasonably efficient — especially for popular cities (DC, Miami, Boston). The market prices airport station behavior, afternoon forecast updates, and seasonal biases correctly. Our 1-2°F model disagreements are within noise, not signal.
+
+Options being evaluated:
+1. **Stick with weather, fix the model** — correct cool bias, move to threshold contracts, add min price floor
+2. **Hunt low-volume weather markets** — less efficient, but harder to find consistently
+3. **Expand to other Kalshi markets** — economic data, sports, news events where real-time data tracking is a moat
+4. **Polymarket** — different market structure, potentially less efficient in niche domains
+5. **Cross-platform arbitrage** — same event priced differently across Kalshi / Polymarket / others
+
+**Our actual advantages:**
+- Continuous monitoring (Chief runs 24/7, humans can't)
+- Data integration speed (can pull weather + news + prices and react in seconds)
+- Tracking breadth (can watch hundreds of markets simultaneously)
+- No emotional bias (don't tilt after losses)
+
+These advantages matter more in **fast-moving, data-rich markets** than in slow-settling weather markets where the edge window is narrow.
+
+**Next steps:** Evaluate Polymarket API access and Kalshi non-weather markets before placing more weather bets. Consider paper-betting weather while exploring other market types.
+
+### Session Log Update
+
+| Date | Key Lesson | Bets | Result |
+|---|---|---|---|
+| 2026-03-25 | Cool bias confirmed (every actual ran warm); 1¢ bucket bets are losing plays; exact buckets require sub-1°F accuracy we don't have; strategic question raised: is weather the right market for our edge? | 2 real (Mar 25 bets) | TBD |

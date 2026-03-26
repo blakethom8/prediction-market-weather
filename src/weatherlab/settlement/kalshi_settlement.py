@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, UTC
+import hashlib
 import json
+import logging
 import re
 from typing import Any
 
@@ -16,6 +18,8 @@ from ..pipeline._markets import (
     outcome_for_observed_high,
     parse_weather_market,
 )
+
+logger = logging.getLogger(__name__)
 
 _MARCH23_TARGET_DATE = date(2026, 3, 23)
 _FINALIZED_STATUSES = {'finalized', 'settled'}
@@ -426,3 +430,176 @@ def fix_march23_settlements(
         'settled_count': len(settled_orders),
         'total_realized_pnl': total_realized_pnl,
     }
+
+
+def _fetch_open_paper_bets(db_path=None, *, tickers: list[str] | None = None) -> list[dict[str, Any]]:
+    """Fetch open paper bets, optionally filtered to specific tickers."""
+    bootstrap(db_path=db_path)
+    con = connect(read_only=True, db_path=db_path)
+    try:
+        if tickers:
+            placeholders = ', '.join(['?'] * len(tickers))
+            rows = con.execute(
+                f"SELECT * FROM ops.paper_bets WHERE status = 'open' AND market_ticker IN ({placeholders})",
+                tickers,
+            ).fetchall()
+        else:
+            rows = con.execute("SELECT * FROM ops.paper_bets WHERE status = 'open'").fetchall()
+        columns = [col[0] for col in con.description]
+        return [dict(zip(columns, row)) for row in rows]
+    finally:
+        con.close()
+
+
+def settle_paper_bet(
+    paper_bet: dict[str, Any],
+    db_path=None,
+    *,
+    client: KalshiClient | None = None,
+) -> dict[str, Any]:
+    """Settle a single paper bet using Kalshi API to determine the market outcome."""
+    ticker = str(paper_bet.get('market_ticker') or '')
+    side = str(paper_bet.get('side') or 'YES').lower()
+    paper_bet_id = str(paper_bet.get('paper_bet_id') or '')
+    quantity = float(paper_bet.get('quantity') or 0)
+    limit_price = float(paper_bet.get('limit_price') or 0)
+
+    summary: dict[str, Any] = {
+        'paper_bet_id': paper_bet_id,
+        'ticker': ticker,
+        'side': side,
+        'settled': False,
+        'outcome': None,
+        'realized_pnl': None,
+        'note': '',
+    }
+
+    market_result = fetch_market_result(ticker, client=client)
+    status = _normalize_label(market_result.get('status')) or ''
+    result = _normalize_label(market_result.get('result'))
+
+    if status not in _FINALIZED_STATUSES or result not in {'yes', 'no'}:
+        summary['note'] = 'Kalshi market not finalized yet.'
+        return summary
+
+    # Determine actual high from Kalshi sibling markets
+    series_ticker, date_label, _ = _split_weather_ticker(ticker)
+    actual_high_f = None
+    if series_ticker and date_label:
+        actual_high_f = fetch_actual_high_from_kalshi(series_ticker, date_label, client=client)
+    if actual_high_f is None and result == 'yes':
+        actual_high_f = _estimate_actual_high_from_market_ticker(ticker)
+
+    # Compute PnL: if we bought YES and market = yes, we win $1/contract minus cost
+    bet_won = (result == side)
+    cost = round(quantity * limit_price, 4)
+    realized_pnl = round(quantity * 1.0 - cost, 4) if bet_won else round(-cost, 4)
+
+    now_utc = datetime.now(UTC).replace(tzinfo=None)
+    settlement_note = f'Kalshi finalized {result.upper()}'
+    if actual_high_f is not None:
+        settlement_note += f'; official high ~{actual_high_f:.1f}F'
+
+    # Update paper bet
+    con = connect(db_path=db_path)
+    try:
+        con.execute(
+            '''
+            UPDATE ops.paper_bets
+            SET status = 'closed',
+                outcome_label = ?,
+                realized_pnl = ?,
+                closed_at_utc = ?
+            WHERE paper_bet_id = ?
+            ''',
+            [result, realized_pnl, now_utc, paper_bet_id],
+        )
+    finally:
+        con.close()
+
+    # Insert review
+    review_id = 'review_' + hashlib.md5(
+        f'{paper_bet_id}-{now_utc.isoformat()}'.encode()
+    ).hexdigest()[:12]
+    market = parse_weather_market({'ticker': ticker, 'title': ticker})
+    bucket_code = market.bucket_code if market else ticker.split('-')[-1]
+    lesson = (
+        f'Market settled {result.upper()}. '
+        f'Actual high ~{actual_high_f:.1f}F vs bucket {bucket_code}. '
+        f'Bet {"won" if bet_won else "lost"} — PnL ${realized_pnl:+.4f}.'
+        if actual_high_f is not None
+        else f'Market settled {result.upper()}. Bet {"won" if bet_won else "lost"} — PnL ${realized_pnl:+.4f}.'
+    )
+
+    con = connect(db_path=db_path)
+    try:
+        con.execute(
+            '''
+            INSERT INTO ops.paper_bet_reviews (
+                review_id, paper_bet_id, proposal_id, strategy_id,
+                reviewed_at_utc, kalshi_outcome_label, realized_pnl,
+                lesson_summary, review_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            [
+                review_id,
+                paper_bet_id,
+                None,
+                paper_bet.get('strategy_id'),
+                now_utc,
+                result,
+                realized_pnl,
+                lesson,
+                json.dumps({
+                    'actual_high_f': actual_high_f,
+                    'bucket_code': bucket_code,
+                    'bet_won': bet_won,
+                    'settlement_note': settlement_note,
+                }),
+            ],
+        )
+    finally:
+        con.close()
+
+    # Update calibration_log if there is a matching paper bet entry
+    _update_calibration_log(
+        live_order_id=paper_bet_id,
+        actual_high_f=actual_high_f,
+        outcome=result,
+        realized_pnl_dollars=realized_pnl,
+        settlement_note=settlement_note,
+        db_path=db_path,
+    )
+
+    logger.info('Settled paper bet %s on %s: %s PnL=$%.4f', paper_bet_id, ticker, result.upper(), realized_pnl)
+
+    summary.update({
+        'settled': True,
+        'outcome': result,
+        'realized_pnl': realized_pnl,
+        'actual_high_f': actual_high_f,
+        'note': settlement_note,
+        'bet_won': bet_won,
+    })
+    return summary
+
+
+def settle_open_paper_bets(
+    db_path=None,
+    *,
+    tickers: list[str] | None = None,
+    client: KalshiClient | None = None,
+) -> list[dict[str, Any]]:
+    """Settle all open paper bets, optionally filtered to specific tickers.
+
+    Called after settling live orders to also close out paper bets on the same markets.
+    """
+    paper_bets = _fetch_open_paper_bets(db_path=db_path, tickers=tickers)
+    if not paper_bets:
+        return []
+
+    kalshi_client = client or KalshiClient()
+    summaries = []
+    for pb in sorted(paper_bets, key=lambda r: str(r.get('market_ticker') or '')):
+        summaries.append(settle_paper_bet(pb, db_path=db_path, client=kalshi_client))
+    return summaries

@@ -47,6 +47,14 @@ def _kill_switch_path() -> Path:
     return ROOT / AUTO_BET_CONFIG['kill_switch_file']
 
 
+def _paper_mode_path() -> Path:
+    return ROOT / 'data/.paper_mode'
+
+
+def is_paper_mode() -> bool:
+    return _paper_mode_path().exists()
+
+
 def _normalize_price(value: Any) -> float | None:
     if value in (None, ''):
         return None
@@ -597,6 +605,158 @@ def _upsert_pending_calibration(
         con.close()
 
 
+def _record_paper_bet(
+    *,
+    candidate: dict,
+    contracts: int,
+    price_cents: int,
+    total_cost: float,
+    side: str,
+    strategy: str,
+    db_path=None,
+) -> dict:
+    """Record a paper bet to ops.paper_bets and ops.calibration_log instead of placing a real order."""
+    import hashlib
+    bootstrap(db_path=db_path)
+    ticker = _candidate_ticker(candidate)
+    city_key = _candidate_city_key(candidate)
+    now_utc = datetime.now(UTC).replace(tzinfo=None)
+    paper_bet_id = 'paperbet_' + hashlib.md5(
+        f'{ticker}-{strategy}-{now_utc.isoformat()}-{id(candidate)}'.encode()
+    ).hexdigest()[:12]
+
+    limit_price = price_cents / 100.0
+    notional_dollars = round(contracts * limit_price, 4)
+    expected_edge = candidate.get('edge')
+    if expected_edge is not None:
+        expected_edge = float(expected_edge)
+
+    notes_json = json.dumps({
+        'auto_bet': True,
+        'paper_mode': True,
+        'bet_side': side,
+        'contract_type': candidate.get('contract_type'),
+        'city_name': candidate.get('city_name'),
+        'label': _candidate_label(candidate),
+        'forecast_gap_f': candidate.get('forecast_gap_f'),
+        'threshold_f': candidate.get('threshold_f'),
+    }, sort_keys=True)
+
+    con = connect(db_path=db_path)
+    try:
+        con.execute(
+            '''
+            insert into ops.paper_bets (
+                paper_bet_id, strategy_id, proposal_id, decision_id,
+                market_ticker, created_at_utc, status, side,
+                limit_price, quantity, notional_dollars, expected_edge,
+                strategy_variant, scenario_label, thesis_at_entry,
+                rationale_summary, rationale_json, forecast_snapshot_id,
+                realized_pnl, outcome_label, closed_at_utc, review_json
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''',
+            [
+                paper_bet_id,
+                candidate.get('strategy_id'),
+                None,
+                None,
+                ticker,
+                now_utc,
+                'open',
+                side.upper(),
+                limit_price,
+                float(contracts),
+                notional_dollars,
+                expected_edge,
+                strategy,
+                'paper',
+                candidate.get('thesis_at_entry'),
+                candidate.get('rationale_summary'),
+                notes_json,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+        )
+    finally:
+        con.close()
+
+    # Also write a calibration_log entry with is_paper_bet=True
+    market = parse_weather_market({'ticker': ticker, 'title': ticker})
+    if market is not None and market.market_date_local is not None:
+        cal_notes = {
+            'auto_bet': True,
+            'paper_mode': True,
+            'bet_side': side,
+            'contract_type': candidate.get('contract_type'),
+            'city_name': candidate.get('city_name'),
+            'label': _candidate_label(candidate),
+            'forecast_gap_f': candidate.get('forecast_gap_f'),
+            'threshold_f': candidate.get('threshold_f'),
+            'market_favorite_ticker': candidate.get('market_favorite_bucket'),
+            'market_favorite_price': candidate.get('market_favorite_ask'),
+            'market_favorite_center_f': candidate.get('market_favorite_center_f'),
+        }
+        con = connect(db_path=db_path)
+        try:
+            con.execute('delete from ops.calibration_log where log_id = ?', [paper_bet_id])
+            con.execute(
+                '''
+                insert into ops.calibration_log (
+                    log_id, market_date_local, city_key, station_id, ticker,
+                    bet_strategy, live_order_id, is_paper_bet,
+                    our_forecast_f, forecast_confidence, market_ask_price,
+                    bucket_center_f, actual_high_f, outcome, forecast_error_f,
+                    market_was_right, edge_realized, notes
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''',
+                [
+                    paper_bet_id,
+                    market.market_date_local,
+                    city_key,
+                    candidate.get('station_id'),
+                    ticker,
+                    strategy,
+                    paper_bet_id,
+                    True,
+                    candidate.get('forecast_high_f', candidate.get('forecast_f')),
+                    candidate.get('forecast_confidence', candidate.get('confidence')),
+                    limit_price,
+                    market_bucket_center(market),
+                    None, None, None, None, None,
+                    json.dumps(cal_notes, sort_keys=True),
+                ],
+            )
+        finally:
+            con.close()
+
+    logger.info('PAPER MODE ACTIVE — skipping real order, recording paper bet: %s %s @ %d¢', ticker, side, price_cents)
+
+    return {
+        'bet_strategy': strategy,
+        'city_key': city_key,
+        'city_name': candidate.get('city_name', CITY_DISPLAY_NAMES.get(city_key, city_key.upper())),
+        'ticker': ticker,
+        'bucket_code': _candidate_bucket_code(candidate),
+        'bucket_label': _candidate_label(candidate),
+        'edge': candidate.get('edge'),
+        'forecast_gap_f': candidate.get('forecast_gap_f'),
+        'bet_side': side,
+        'contracts': contracts,
+        'price': round(limit_price, 2),
+        'cost': notional_dollars,
+        'order_id': f'PAPER-{paper_bet_id}',
+        'live_order_id': paper_bet_id,
+        'paper_bet_id': paper_bet_id,
+        'payout_if_win': float(contracts),
+        'status': 'paper',
+        'fill_count': contracts,
+        'paper_mode': True,
+    }
+
+
 def _candidate_bucket_code(candidate: dict) -> str | None:
     ticker = _candidate_ticker(candidate)
     if not ticker:
@@ -643,9 +803,22 @@ def _place_candidate_bet(
     city_key = _candidate_city_key(candidate_with_db)
     ticker = _candidate_ticker(candidate_with_db)
     side = _candidate_trade_side(candidate_with_db)
+    price_cents = int(round(float(ask_price) * 100))
+
+    # Paper mode: record paper bet instead of placing real order
+    if is_paper_mode():
+        return _record_paper_bet(
+            candidate=candidate_with_db,
+            contracts=contracts,
+            price_cents=price_cents,
+            total_cost=total_cost,
+            side=side,
+            strategy=strategy,
+            db_path=db_path,
+        )
+
     import random as _random
     client_order_id = f'auto-{strategy}-{city_key}-{int(time_module.time())}-{_random.randint(1000,9999)}'
-    price_cents = int(round(float(ask_price) * 100))
     client = KalshiClient(timeout_seconds=10.0)
     payload = client.place_order(
         ticker=ticker,

@@ -9,7 +9,7 @@ from ..build.bootstrap import bootstrap
 from ..db import connect
 from ..forecast.asos import STATION_IDS, fetch_station_daily_high
 from ..live.live_orders import fetch_live_orders, settle_live_order as persist_live_order_settlement
-from ..settlement.kalshi_settlement import settle_live_order as settle_live_order_from_kalshi
+from ..settlement.kalshi_settlement import settle_live_order as settle_live_order_from_kalshi, settle_open_paper_bets
 from ._markets import display_name_for_city, market_bucket_center, outcome_for_observed_high, parse_weather_market
 
 
@@ -328,6 +328,12 @@ def run_settlement_and_learning(target_date: date, db_path=None) -> dict:
         elif not any(order.get('settled') for order in city_report['orders']):
             city_report['note'] = 'Kalshi markets not finalized yet.'
 
+    # Also settle any open paper bets on the same tickers
+    settled_tickers = [str(o.get('ticker') or '') for o in settled_orders if o.get('settled')]
+    paper_bet_summaries = []
+    if settled_tickers:
+        paper_bet_summaries = settle_open_paper_bets(db_path=db_path, tickers=settled_tickers)
+
     session_pnl = round(sum(float(row.get('realized_pnl_dollars') or 0.0) for row in settled_orders), 2)
     con = connect(read_only=True, db_path=db_path)
     try:
@@ -346,6 +352,7 @@ def run_settlement_and_learning(target_date: date, db_path=None) -> dict:
         'target_date': target_date.isoformat(),
         'cities': city_reports,
         'settled_orders': settled_orders,
+        'paper_bet_summaries': paper_bet_summaries,
         'session_pnl': session_pnl,
         'cumulative_pnl': cumulative_pnl,
         'historical_city_summary': _historical_city_summary(db_path=db_path),

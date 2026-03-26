@@ -51,7 +51,8 @@ class AutoBetTests(unittest.TestCase):
             '_db_path': self.db_path,
         }
 
-        should_bet, reason = should_auto_bet(candidate)
+        with patch('weatherlab.pipeline.auto_bet._kill_switch_path', return_value=Path(self.tmpdir.name) / 'nonexistent'):
+            should_bet, reason = should_auto_bet(candidate)
         self.assertFalse(should_bet)
         self.assertEqual(reason, 'station unverified')
 
@@ -148,8 +149,11 @@ class AutoBetTests(unittest.TestCase):
             {'order': {'order_id': 'order-lax', 'status': 'executed', 'count': 3, 'fill_count': 3, 'limit_price': 90, 'taker_cost_dollars': 2.7}},
         ]
 
-        with patch('weatherlab.pipeline.auto_bet.KalshiClient', return_value=fake_client):
-            with patch('weatherlab.pipeline.auto_bet.time_module.time', side_effect=[1774339200, 1774339201, 1774339202]):
+        nonexistent = Path(self.tmpdir.name) / 'nonexistent'
+        with patch('weatherlab.pipeline.auto_bet.KalshiClient', return_value=fake_client), \
+             patch('weatherlab.pipeline.auto_bet.time_module.time', side_effect=[1774339200, 1774339201, 1774339202]), \
+             patch('weatherlab.pipeline.auto_bet._kill_switch_path', return_value=nonexistent), \
+             patch('weatherlab.pipeline.auto_bet.is_paper_mode', return_value=False):
                 placed = run_auto_betting_session(scan_results, db_path=self.db_path)
 
         placed_strategies = [bet['bet_strategy'] for bet in placed]
