@@ -591,3 +591,59 @@ These advantages matter more in **fast-moving, data-rich markets** than in slow-
 | Date | Key Lesson | Bets | Result |
 |---|---|---|---|
 | 2026-03-25 | Cool bias confirmed (every actual ran warm); 1¢ bucket bets are losing plays; exact buckets require sub-1°F accuracy we don't have; strategic question raised: is weather the right market for our edge? | 2 real (Mar 25 bets) | TBD |
+
+
+## March 25, 2026 Settlement Review
+
+- DC: the market favorite beat our model (0.0°F vs 1.5°F error).
+- Seattle: the market favorite beat our model (0.0°F vs 2.5°F error).
+
+
+## March 25, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+
+## March 26, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+
+## March 26, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+
+## March 27, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+
+## March 27, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+
+## March 28, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+
+## March 28, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+
+## March 30, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+
+## April 3, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
+
+
+## April 4, 2026 Settlement Review
+
+- No new calibration red flags today. Keep collecting settled outcomes under the current guardrails.
