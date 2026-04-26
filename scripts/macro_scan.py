@@ -9,6 +9,7 @@ from typing import Any
 from weatherlab.ingest.kalshi_live import KalshiClient
 
 MAX_YES_ASK = 0.15
+MIN_YES_ASK = 0.01  # exclude 0c delisted/near-settled markets
 MIN_VOLUME = 500.0
 
 
@@ -59,7 +60,7 @@ def filter_coldmath_candidates(
         volume = _normalize_volume(market.get('volume'))
         if yes_ask is None or volume is None:
             continue
-        if yes_ask > max_yes_ask or volume <= min_volume:
+        if yes_ask < MIN_YES_ASK or yes_ask > max_yes_ask or volume <= min_volume:
             continue
 
         candidates.append(
