@@ -35,6 +35,37 @@ class RegistryLoaderTests(unittest.TestCase):
         self.assertEqual(station_count, counts['stations'])
         self.assertEqual(primary_station, 'KNYC')
 
+    def test_weather_city_registry_uses_airport_coordinates(self):
+        load_all_registries(db_path=self.db_path)
+
+        expected_coords = {
+            'dc': (38.8521, -77.0377),
+            'mia': (25.7959, -80.2870),
+            'bos': (42.3601, -71.0105),
+            'phl': (39.8721, -75.2411),
+            'lax': (33.9425, -118.4081),
+            'chi': (41.7868, -87.7522),
+            'den': (39.8561, -104.6737),
+        }
+
+        con = connect(db_path=self.db_path)
+        try:
+            rows = con.execute(
+                '''
+                select city_id, lat, lon
+                from core.cities
+                where city_id in ('dc', 'mia', 'bos', 'phl', 'lax', 'chi', 'den')
+                '''
+            ).fetchall()
+        finally:
+            con.close()
+
+        self.assertEqual(len(rows), len(expected_coords))
+        for city_id, lat, lon in rows:
+            expected_lat, expected_lon = expected_coords[city_id]
+            self.assertAlmostEqual(lat, expected_lat, places=4)
+            self.assertAlmostEqual(lon, expected_lon, places=4)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -11,8 +11,8 @@ cities:
     city_name: Washington
     state_code: DC
     timezone_name: America/New_York
-    lat: 38.9072
-    lon: -77.0369
+    lat: 38.8521
+    lon: -77.0377
     primary_station_id: KDCA
     aliases: ["washington", "washington dc", "washington, dc", "dc"]
   - city_id: bos
@@ -20,31 +20,31 @@ cities:
     state_code: MA
     timezone_name: America/New_York
     lat: 42.3601
-    lon: -71.0589
+    lon: -71.0105
     primary_station_id: KBOS
     aliases: ["boston"]
   - city_id: chi
     city_name: Chicago
     state_code: IL
     timezone_name: America/Chicago
-    lat: 41.8781
-    lon: -87.6298
+    lat: 41.7868
+    lon: -87.7522
     primary_station_id: KMDW
     aliases: ["chicago"]
   - city_id: mia
     city_name: Miami
     state_code: FL
     timezone_name: America/New_York
-    lat: 25.7617
-    lon: -80.1918
+    lat: 25.7959
+    lon: -80.2870
     primary_station_id: KMIA
     aliases: ["miami"]
   - city_id: lax
     city_name: Los Angeles
     state_code: CA
     timezone_name: America/Los_Angeles
-    lat: 34.0522
-    lon: -118.2437
+    lat: 33.9425
+    lon: -118.4081
     primary_station_id: KLAX
     aliases: ["los angeles", "la"]
   - city_id: dal
@@ -67,16 +67,16 @@ cities:
     city_name: Denver
     state_code: CO
     timezone_name: America/Denver
-    lat: 39.7392
-    lon: -104.9903
+    lat: 39.8561
+    lon: -104.6737
     primary_station_id: KDEN
     aliases: ["denver"]
   - city_id: phl
     city_name: Philadelphia
     state_code: PA
     timezone_name: America/New_York
-    lat: 39.9526
-    lon: -75.1652
+    lat: 39.8721
+    lon: -75.2411
     primary_station_id: KPHL
     aliases: ["philadelphia", "philly"]
   - city_id: hou

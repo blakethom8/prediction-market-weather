@@ -57,9 +57,14 @@ class WeatherMarket:
     threshold_low_f: float | None
     threshold_high_f: float | None
     yes_ask: float | None
+    volume: float | None
+    open_interest: float | None
     label: str
     bucket_code: str | None
     raw_market: dict[str, Any]
+
+
+MIN_TOTAL_OPEN_INTEREST = 1_000.0
 
 
 def _normalize_price(value: Any) -> float | None:
@@ -67,6 +72,12 @@ def _normalize_price(value: Any) -> float | None:
         return None
     price = float(value)
     return price / 100.0 if price > 1.0 else price
+
+
+def _normalize_float(value: Any) -> float | None:
+    if value in (None, ''):
+        return None
+    return float(value)
 
 
 def _city_key_from_ticker(ticker: str) -> str | None:
@@ -167,6 +178,8 @@ def parse_weather_market(market: dict[str, Any]) -> WeatherMarket | None:
         threshold_low_f=threshold_low_f,
         threshold_high_f=threshold_high_f,
         yes_ask=_normalize_price(market.get('yes_ask')),
+        volume=_normalize_float(market.get('volume')),
+        open_interest=_normalize_float(market.get('open_interest')),
         label=format_bucket_label(operator, threshold_low_f, threshold_high_f),
         bucket_code=bucket_code,
         raw_market=market,
@@ -255,6 +268,8 @@ def choose_best_market(
 ) -> tuple[WeatherMarket | None, float | None]:
     ranked: list[tuple[float, float, float, WeatherMarket]] = []
     for market in markets:
+        if market.open_interest is not None and market.open_interest < MIN_TOTAL_OPEN_INTEREST:
+            continue
         probability = estimate_model_probability(forecast_high_f, confidence, market)
         if probability is None:
             continue

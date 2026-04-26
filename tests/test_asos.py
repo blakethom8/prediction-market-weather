@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from weatherlab.forecast.asos import (
     WARM_BIAS_CORRECTION_F,
+    fetch_station_forecast,
     fetch_morning_validation,
     fetch_station_daily_high,
     fetch_station_observations,
@@ -22,6 +23,20 @@ class FakeResponse:
 
 
 class ASOSFetchTests(unittest.TestCase):
+    def test_fetch_station_forecast_uses_airport_point_coordinates(self):
+        responses = [
+            FakeResponse({'properties': {'forecast': 'https://api.weather.gov/gridpoints/LWX/96,70/forecast'}}),
+            FakeResponse({'properties': {'periods': []}}),
+        ]
+
+        with patch('weatherlab.forecast.asos.requests.get', side_effect=responses) as get_mock:
+            fetch_station_forecast('KDCA')
+
+        self.assertEqual(
+            get_mock.call_args_list[0].args[0],
+            'https://api.weather.gov/points/38.8521,-77.0377',
+        )
+
     def test_fetch_station_observations_parses_and_sorts_nws_json(self):
         payload = {
             'features': [

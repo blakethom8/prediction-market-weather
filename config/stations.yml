@@ -103,8 +103,8 @@ stations:
     station_name: Philadelphia International Airport
     network: nws
     timezone_name: America/New_York
-    lat: 39.8744
-    lon: -75.2424
+    lat: 39.8721
+    lon: -75.2411
     is_primary: true
     notes: "Default Philadelphia settlement proxy pending exact contract rule verification."
   - station_id: KHOU

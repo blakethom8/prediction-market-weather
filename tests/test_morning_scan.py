@@ -2,7 +2,7 @@ import unittest
 from datetime import date
 from unittest.mock import Mock, patch
 
-from weatherlab.pipeline._markets import estimate_model_probability, parse_weather_market
+from weatherlab.pipeline._markets import choose_best_market, estimate_model_probability, parse_weather_market
 from weatherlab.pipeline.morning_scan import format_scan_report, run_morning_scan
 
 
@@ -103,6 +103,79 @@ class MorningScanTests(unittest.TestCase):
         self.assertEqual(estimate_model_probability(83, 'high', market), 0.65)
         self.assertEqual(estimate_model_probability(83, 'medium', market), 0.55)
         self.assertEqual(estimate_model_probability(84.5, 'high', market), 0.35)
+
+    def test_choose_best_market_skips_low_open_interest_contracts(self):
+        low_interest_market = parse_weather_market(
+            {
+                'ticker': 'KXHIGHMIA-26MAR24-B82.5',
+                'title': 'Will the high temp in Miami be between 82 and 83 degrees on Mar 24, 2026?',
+                'yes_ask': 0.39,
+                'open_interest': 999,
+            }
+        )
+        liquid_market = parse_weather_market(
+            {
+                'ticker': 'KXHIGHMIA-26MAR24-B84.5',
+                'title': 'Will the high temp in Miami be between 84 and 85 degrees on Mar 24, 2026?',
+                'yes_ask': 0.21,
+                'open_interest': 1000,
+            }
+        )
+        self.assertIsNotNone(low_interest_market)
+        self.assertIsNotNone(liquid_market)
+        assert low_interest_market is not None
+        assert liquid_market is not None
+
+        best_market, model_probability = choose_best_market(
+            [low_interest_market, liquid_market],
+            forecast_high_f=83,
+            confidence='high',
+        )
+
+        self.assertEqual(best_market, liquid_market)
+        self.assertEqual(model_probability, 0.35)
+
+    def test_run_morning_scan_flags_high_volume_market_disagreement(self):
+        target_date = date(2026, 3, 24)
+        fake_client = Mock()
+        fake_client.fetch_open_weather_markets.return_value = [
+            {
+                'ticker': 'KXHIGHMIA-26MAR24-B82.5',
+                'title': 'Will the high temp in Miami be between 82 and 83 degrees on Mar 24, 2026?',
+                'yes_ask': 0.39,
+                'volume': 5001,
+                'open_interest': 1000,
+            },
+        ]
+
+        def fake_validation(station_id: str) -> dict:
+            if station_id == 'KMIA':
+                return {
+                    'forecast_high_f': 83,
+                    'observed_max_so_far_f': 76.2,
+                    'obs_count': 7,
+                    'forecast_confidence': 'high',
+                    'note': 'Observed temps are tracking within 2.0F of forecast.',
+                }
+            return {
+                'forecast_high_f': None,
+                'observed_max_so_far_f': None,
+                'obs_count': 0,
+                'forecast_confidence': 'unknown',
+                'note': 'No observations yet.',
+            }
+
+        with patch('weatherlab.pipeline.morning_scan.KalshiClient', return_value=fake_client):
+            with patch('weatherlab.pipeline.morning_scan.fetch_morning_validation', side_effect=fake_validation):
+                scan = run_morning_scan(target_date=target_date)
+
+        miami = scan['cities']['miami']
+        self.assertEqual(miami['recommendation'], 'MARKET_DISAGREES')
+        self.assertEqual(
+            miami['recommendation_reason'],
+            'High-volume market price differs from the model by more than 10¢.',
+        )
+        self.assertNotIn('miami', scan['top_picks'])
 
     def test_format_scan_report_renders_sections(self):
         scan_results = {

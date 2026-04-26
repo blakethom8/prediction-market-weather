@@ -15,6 +15,9 @@ from ._markets import (
 
 logger = logging.getLogger(__name__)
 
+INFORMED_MARKET_VOLUME = 5_000.0
+MARKET_DISAGREEMENT_THRESHOLD = 0.10
+
 
 def _default_scan_date() -> date:
     return date.today()
@@ -46,6 +49,12 @@ def _recommendation_for_city(
         return 'SKIP', 'Best-fit bucket is missing an ask price or model probability.'
 
     edge = model_probability - best_market.yes_ask
+    if (
+        best_market.volume is not None
+        and best_market.volume > INFORMED_MARKET_VOLUME
+        and abs(edge) > MARKET_DISAGREEMENT_THRESHOLD
+    ):
+        return 'MARKET_DISAGREES', 'High-volume market price differs from the model by more than 10¢.'
     if confidence in {'low', 'unknown'}:
         return 'SKIP', f'Forecast confidence is {confidence}.'
     if adjacent_market is not None:
@@ -429,10 +438,12 @@ def format_scan_report(scan_results: dict, include_all: bool = False) -> str:
     coldmath_plays = list(scan_results.get('coldmath_plays') or [])
     buys = [row for row in cities.values() if row.get('recommendation') == 'BUY']
     watches = [row for row in cities.values() if row.get('recommendation') == 'WATCH']
+    market_disagrees = [row for row in cities.values() if row.get('recommendation') == 'MARKET_DISAGREES']
     skips = [row for row in cities.values() if row.get('recommendation') == 'SKIP']
 
     buys.sort(key=lambda row: row.get('edge') if row.get('edge') is not None else float('-inf'), reverse=True)
     watches.sort(key=lambda row: row.get('edge') if row.get('edge') is not None else float('-inf'), reverse=True)
+    market_disagrees.sort(key=lambda row: abs(row.get('edge') or 0.0), reverse=True)
     skips.sort(key=lambda row: row['city_name'])
 
     def render_row(icon: str, row: dict) -> list[str]:
@@ -472,6 +483,12 @@ def format_scan_report(scan_results: dict, include_all: bool = False) -> str:
     else:
         lines.append('No WATCH setups right now.')
         lines.append('')
+
+    if market_disagrees:
+        lines.append('MARKET DISAGREES:')
+        for row in market_disagrees:
+            lines.extend(render_row('👀', row))
+            lines.append('')
 
     if include_all or skips:
         lines.append('SKIP:')
