@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime
 from unittest.mock import patch
 
 from weatherlab.forecast.asos import (
+    WARM_BIAS_CORRECTION_F,
     fetch_morning_validation,
     fetch_station_daily_high,
     fetch_station_observations,
@@ -77,8 +78,8 @@ class ASOSFetchTests(unittest.TestCase):
 
     def test_fetch_morning_validation_scores_tracking_forecast_high(self):
         observations = [
-            {'time_utc': '2026-03-24T12:00:00Z', 'temp_f': 49.2, 'conditions': 'Clear'},
-            {'time_utc': '2026-03-24T13:00:00Z', 'temp_f': 50.1, 'conditions': 'Sunny'},
+            {'time_utc': '2026-03-24T12:00:00Z', 'temp_f': 51.2, 'conditions': 'Clear'},
+            {'time_utc': '2026-03-24T13:00:00Z', 'temp_f': 52.1, 'conditions': 'Sunny'},
         ]
 
         with patch('weatherlab.forecast.asos.fetch_station_forecast', return_value={'today_high_f': 52, 'tomorrow_high_f': 61, 'sky_condition': 'Sunny'}):
@@ -87,9 +88,21 @@ class ASOSFetchTests(unittest.TestCase):
                     validation = fetch_morning_validation('KDCA')
 
         self.assertEqual(validation['forecast_confidence'], 'high')
-        self.assertEqual(validation['forecast_high_f'], 52)
-        self.assertEqual(validation['observed_max_so_far_f'], 50.1)
+        self.assertEqual(validation['forecast_high_f'], 53.5)
+        self.assertEqual(validation['observed_max_so_far_f'], 52.1)
         self.assertIn('tracking within', validation['note'])
+
+    def test_fetch_morning_validation_applies_warm_bias_to_forecast_high(self):
+        observations = [
+            {'time_utc': '2026-03-24T12:00:00Z', 'temp_f': 50.0, 'conditions': 'Clear'},
+        ]
+
+        with patch('weatherlab.forecast.asos.fetch_station_forecast', return_value={'today_high_f': 52, 'tomorrow_high_f': 61, 'sky_condition': 'Sunny'}):
+            with patch('weatherlab.forecast.asos.fetch_station_observations', return_value=observations):
+                with patch('weatherlab.forecast.asos._now_utc', return_value=datetime(2026, 3, 24, 14, 0, tzinfo=UTC)):
+                    validation = fetch_morning_validation('KDCA')
+
+        self.assertEqual(validation['forecast_high_f'], 52 + WARM_BIAS_CORRECTION_F)
 
     def test_fetch_morning_validation_scores_low_when_station_runs_hot(self):
         observations = [
@@ -113,6 +126,7 @@ class ASOSFetchTests(unittest.TestCase):
                     validation = fetch_morning_validation('KPHL')
 
         self.assertEqual(validation['forecast_confidence'], 'unknown')
+        self.assertEqual(validation['forecast_high_f'], 59.5)
         self.assertIsNone(validation['observed_max_so_far_f'])
         self.assertEqual(validation['obs_count'], 0)
 

@@ -13,6 +13,7 @@ from ..settings import NWS_API_BASE_URL
 logger = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT_SECONDS = 8.0
+WARM_BIAS_CORRECTION_F = 1.5  # systematic cool bias, observed 2026-03-23 -> 2026-04-13
 NWS_HEADERS = {
     'Accept': 'application/geo+json',
     'User-Agent': 'prediction-market-weather/0.1 (operator console; contact local repo)',
@@ -392,6 +393,12 @@ def fetch_station_forecast(station_id: str) -> dict:
     return _parse_forecast_periods(periods, metadata.timezone_name)
 
 
+def _apply_warm_bias_correction(forecast_high_f: Any) -> float | None:
+    if forecast_high_f in (None, ''):
+        return None
+    return float(forecast_high_f) + WARM_BIAS_CORRECTION_F
+
+
 def fetch_morning_validation(station_id: str) -> dict:
     """
     Compare the station forecast against observations collected so far today.
@@ -406,7 +413,7 @@ def fetch_morning_validation(station_id: str) -> dict:
     temps = [float(row['temp_f']) for row in observations if row.get('temp_f') is not None]
     observed_max = max(temps) if temps else None
     obs_count = len(temps)
-    forecast_high = forecast.get('today_high_f')
+    forecast_high = _apply_warm_bias_correction(forecast.get('today_high_f'))
 
     if observed_max is None:
         return {
@@ -450,7 +457,7 @@ def fetch_morning_validation(station_id: str) -> dict:
         note = f'Observed trend is {abs(discrepancy):.1f}F away from the forecasted high.'
 
     return {
-        'forecast_high_f': int(round(float(forecast_high))),
+        'forecast_high_f': round(float(forecast_high), 1),
         'observed_max_so_far_f': round(observed_max, 1),
         'obs_count': obs_count,
         'forecast_confidence': confidence,
