@@ -3,10 +3,62 @@ from datetime import date
 from unittest.mock import Mock, patch
 
 from weatherlab.pipeline._markets import choose_best_market, estimate_model_probability, parse_weather_market
-from weatherlab.pipeline.morning_scan import format_scan_report, run_morning_scan
+from weatherlab.pipeline.morning_scan import _recommendation_for_city, format_scan_report, run_morning_scan
 
 
 class MorningScanTests(unittest.TestCase):
+    def test_recommendation_buys_when_observed_max_reaches_threshold_by_10am(self):
+        market = parse_weather_market(
+            {
+                'ticker': 'KXHIGHMIA-26APR26-A80',
+                'title': 'Will the high temp in Miami be above 80 degrees on Apr 26, 2026?',
+                'yes_ask': 0.42,
+            }
+        )
+        self.assertIsNotNone(market)
+        assert market is not None
+
+        recommendation, reason = _recommendation_for_city(
+            station_verified=True,
+            confidence='medium',
+            best_market=market,
+            model_probability=0.20,
+            adjacent_market=None,
+            observed_max_so_far_f=80.0,
+            forecast_high_f=77.0,
+            obs_divergence_f=3.0,
+            local_hour=10,
+        )
+
+        self.assertEqual(recommendation, 'BUY')
+        self.assertIn('Observed max already reached', reason)
+
+    def test_recommendation_downgrades_when_observed_max_lags_forecast_after_11am(self):
+        market = parse_weather_market(
+            {
+                'ticker': 'KXHIGHMIA-26APR26-B82.5',
+                'title': 'Will the high temp in Miami be between 82 and 83 degrees on Apr 26, 2026?',
+                'yes_ask': 0.39,
+            }
+        )
+        self.assertIsNotNone(market)
+        assert market is not None
+
+        recommendation, reason = _recommendation_for_city(
+            station_verified=True,
+            confidence='high',
+            best_market=market,
+            model_probability=0.65,
+            adjacent_market=None,
+            observed_max_so_far_f=79.0,
+            forecast_high_f=83.0,
+            obs_divergence_f=4.0,
+            local_hour=11,
+        )
+
+        self.assertEqual(recommendation, 'WATCH')
+        self.assertIn('tracking 4.0F below forecast', reason)
+
     def test_run_morning_scan_scores_edges_and_recommendations(self):
         target_date = date(2026, 3, 24)
         fake_client = Mock()

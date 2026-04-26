@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 import logging
+from zoneinfo import ZoneInfo
 
 from ..forecast.asos import CITY_DISPLAY_NAMES, STATION_REGISTRY, fetch_morning_validation
 from ..ingest.kalshi_live import KalshiClient, KalshiClientError
@@ -17,6 +18,55 @@ logger = logging.getLogger(__name__)
 
 INFORMED_MARKET_VOLUME = 5_000.0
 MARKET_DISAGREEMENT_THRESHOLD = 0.10
+
+
+def _same_day_local_hour(scan_time_utc: datetime, timezone_name: str, market_date_local: date | None) -> int | None:
+    if market_date_local is None:
+        return None
+    scan_local = scan_time_utc.astimezone(ZoneInfo(timezone_name))
+    if scan_local.date() != market_date_local:
+        return None
+    return scan_local.hour
+
+
+def _observed_threshold_buy(
+    *,
+    best_market: WeatherMarket,
+    observed_max_so_far_f: float | int | None,
+    local_hour: int | None,
+) -> bool:
+    if local_hour is None or local_hour < 10:
+        return False
+    if observed_max_so_far_f is None or best_market.threshold_low_f is None:
+        return False
+    if best_market.operator != '>=':
+        return False
+    return float(observed_max_so_far_f) >= float(best_market.threshold_low_f)
+
+
+def _downgrade_for_observed_lag(
+    recommendation: str,
+    *,
+    forecast_high_f: float | int | None,
+    observed_max_so_far_f: float | int | None,
+    obs_divergence_f: float | None,
+    local_hour: int | None,
+) -> tuple[str, str | None]:
+    if local_hour is None or local_hour < 11:
+        return recommendation, None
+    if forecast_high_f is None or observed_max_so_far_f is None:
+        return recommendation, None
+    if obs_divergence_f is not None and obs_divergence_f <= 3.0:
+        return recommendation, None
+
+    lag_f = round(float(forecast_high_f) - float(observed_max_so_far_f), 1)
+    if lag_f <= 3.0:
+        return recommendation, None
+    if recommendation == 'BUY':
+        return 'WATCH', f'Observed max is tracking {lag_f:.1f}F below forecast after 11 AM local.'
+    if recommendation == 'WATCH':
+        return 'SKIP', f'Observed max is tracking {lag_f:.1f}F below forecast after 11 AM local.'
+    return recommendation, None
 
 
 def _default_scan_date() -> date:
@@ -40,13 +90,26 @@ def _recommendation_for_city(
     best_market: WeatherMarket | None,
     model_probability: float | None,
     adjacent_market: WeatherMarket | None,
+    observed_max_so_far_f: float | int | None = None,
+    forecast_high_f: float | int | None = None,
+    obs_divergence_f: float | None = None,
+    local_hour: int | None = None,
 ) -> tuple[str, str]:
     if not station_verified:
         return 'SKIP', 'Settlement station is not verified against current contract rules.'
     if best_market is None:
         return 'SKIP', 'No open Kalshi bucket matched this city/date.'
-    if best_market.yes_ask is None or model_probability is None:
-        return 'SKIP', 'Best-fit bucket is missing an ask price or model probability.'
+    if best_market.yes_ask is None:
+        return 'SKIP', 'Best-fit bucket is missing an ask price.'
+    if _observed_threshold_buy(
+        best_market=best_market,
+        observed_max_so_far_f=observed_max_so_far_f,
+        local_hour=local_hour,
+    ):
+        threshold_f = best_market.threshold_low_f
+        return 'BUY', f'Observed max already reached the {threshold_f:g}F threshold by 10 AM local.'
+    if model_probability is None:
+        return 'SKIP', 'Best-fit bucket is missing a model probability.'
 
     edge = model_probability - best_market.yes_ask
     if (
@@ -57,13 +120,28 @@ def _recommendation_for_city(
         return 'MARKET_DISAGREES', 'High-volume market price differs from the model by more than 10¢.'
     if confidence in {'low', 'unknown'}:
         return 'SKIP', f'Forecast confidence is {confidence}.'
+    recommendation = 'SKIP'
+    reason = 'Edge is too thin after confidence adjustment.'
     if adjacent_market is not None:
-        return 'WATCH', 'Forecast is on a bucket boundary; track both adjacent outcomes.'
-    if edge >= 0.10 and confidence == 'high':
-        return 'BUY', 'Positive edge with high-confidence station validation.'
-    if edge >= 0.05 and confidence in {'high', 'medium'}:
-        return 'WATCH', 'Edge is positive, but the setup is not clean enough for auto-buy.'
-    return 'SKIP', 'Edge is too thin after confidence adjustment.'
+        recommendation = 'WATCH'
+        reason = 'Forecast is on a bucket boundary; track both adjacent outcomes.'
+    elif edge >= 0.10 and confidence == 'high':
+        recommendation = 'BUY'
+        reason = 'Positive edge with high-confidence station validation.'
+    elif edge >= 0.05 and confidence in {'high', 'medium'}:
+        recommendation = 'WATCH'
+        reason = 'Edge is positive, but the setup is not clean enough for auto-buy.'
+
+    downgraded, downgrade_reason = _downgrade_for_observed_lag(
+        recommendation,
+        forecast_high_f=forecast_high_f,
+        observed_max_so_far_f=observed_max_so_far_f,
+        obs_divergence_f=obs_divergence_f,
+        local_hour=local_hour,
+    )
+    if downgrade_reason is not None:
+        return downgraded, downgrade_reason
+    return recommendation, reason
 
 
 def _favorite_market(markets: list[WeatherMarket]) -> WeatherMarket | None:
@@ -302,12 +380,17 @@ def run_morning_scan(target_date: date | None = None, db_path: str | None = None
         obs_divergence_f = None
         if observed_max is not None and forecast_high is not None:
             obs_divergence_f = round(abs(float(observed_max) - float(forecast_high)), 1)
+        local_hour = _same_day_local_hour(scan_time_utc, metadata.timezone_name, resolved_date)
         recommendation, recommendation_reason = _recommendation_for_city(
             station_verified=metadata.settlement_verified,
             confidence=validation.get('forecast_confidence', 'unknown'),
             best_market=best_market,
             model_probability=model_probability,
             adjacent_market=adjacent_market,
+            observed_max_so_far_f=observed_max,
+            forecast_high_f=forecast_high,
+            obs_divergence_f=obs_divergence_f,
+            local_hour=local_hour,
         )
 
         if not metadata.settlement_verified and metadata.note:
