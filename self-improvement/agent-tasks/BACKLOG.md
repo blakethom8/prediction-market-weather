@@ -101,6 +101,65 @@ if forecast_high_f is not None:
 
 ---
 
+---
+
+## Priority 5 — Alpha Expansion (Added 2026-04-26)
+
+*Source: Strategic review — see `insights/2026-04-26-intraday-ladder-strategy.md`*
+
+### [TASK-010] Add intraday scan crons (10:30am + 12pm ladder)
+**Files:** `scripts/morning_scan.py`, OpenClaw cron config or Makefile
+**What:**
+- Add a `scripts/intraday_scan.py` (or flag on morning_scan) that runs at 10:30am and 12pm PDT
+- 10:30am scan: East Coast cities only, threshold-contract focus, require observed_max within 3°F of threshold
+- 12pm scan: Central + West Coast cities, same threshold focus
+- Each scan sends a notify event only if actionable plays found (suppress empty scans)
+- Add `--window east|central|west` flag to scope city set
+**Why:** East Coast highs peak 11am-1pm PDT. The best confirmed-play window is 10-11am PDT, not 8am. We have the intraday logic (TASK-004) but no cron for it.
+**Tests:** Unit test that `--window east` only scans East Coast cities; unit test that scan suppresses notify when no threshold plays found.
+
+---
+
+### [TASK-011] Threshold-only filter in recommendation engine
+**File:** `src/weatherlab/pipeline/morning_scan.py`, `src/weatherlab/pipeline/_markets.py`
+**What:**
+- Add `is_threshold_contract(market: WeatherMarket) -> bool` — returns True for `>=` and `<=` operators, False for `between` (bucket)
+- In `_recommendation_for_city()`: if contract is a bucket (`between`), downgrade any BUY to WATCH unless full ColdMath criteria met (≥10°F gap, market ≥85¢)
+- Add `contract_type: threshold|bucket` field to scan output rows
+- Morning scan report should note `[BUCKET - watch only]` on any bucket recommendations
+**Why:** Bucket bets require ±0.5°F accuracy we don't have. Threshold bets win across a range. This prevents the scan from surfacing bucket plays as actionable BUYs.
+**Tests:** Test that bucket contract with high edge gets downgraded to WATCH; test that threshold contract with same edge stays BUY.
+
+---
+
+### [TASK-012] Macro Kalshi market scanner
+**File:** `scripts/macro_scan.py` (new), `src/weatherlab/ingest/kalshi_live.py`
+**What:**
+- New script that fetches all open Kalshi markets (not just weather)
+- Filters for ColdMath candidates: `yes_ask <= 0.15` AND `volume > 500`
+- For each candidate, outputs: ticker, title, yes_ask, volume, days_to_close
+- Formats as a scannable report (similar to morning scan output)
+- Add `--notify` flag to send via openclaw system event
+- Does NOT make recommendations — just surfaces candidates for human review
+**Why:** CPI bet was our best trade (9x). Macro structural bets have better risk/reward than weather buckets and don't require forecast accuracy.
+**Tests:** Unit test that filter correctly selects low-priced, liquid markets; test report formatting.
+
+---
+
+### [TASK-013] Polymarket cross-platform price comparison
+**File:** `scripts/arb_scan.py` (new), `src/weatherlab/ingest/polymarket.py` (new)
+**What:**
+- Fetch Polymarket markets via their public API (no auth needed for reads)
+- Match against open Kalshi markets by event keyword/slug
+- Flag pairs where price difference > 5¢ on same-side
+- Output: `KALSHI {ticker} YES={price} vs POLYMARKET {slug} YES={price}, diff={delta}¢`
+- Add `--notify` flag
+**Why:** Pure arbitrage — no model needed. Our 24/7 monitoring is the edge.
+**Note:** Start with read-only price comparison. Polymarket execution is separate.
+**Tests:** Unit test price comparison logic; test that diff < 5¢ produces no output.
+
+---
+
 ## Completed Tasks
 
 *(Move files here from `active/` when done)*
