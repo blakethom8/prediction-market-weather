@@ -95,6 +95,13 @@ def _parse_float(value: Any) -> float | None:
         return None
 
 
+def _parse_price(value: Any) -> float | None:
+    parsed = _parse_float(value)
+    if parsed is None:
+        return None
+    return parsed / 100.0 if parsed > 1.0 else parsed
+
+
 def _coalesce(*values: Any) -> Any:
     for value in values:
         if value not in (None, ''):
@@ -153,51 +160,34 @@ class KalshiClient:
             )
 
     def fetch_open_weather_markets(self) -> list[dict[str, Any]]:
+        """Fetch all open weather markets using targeted series_ticker queries.
+
+        Uses ``series_ticker`` param instead of paginating all open markets,
+        which avoids scanning 10,000+ irrelevant markets and cuts fetch time
+        from minutes (hanging) to ~5 seconds.
+        """
         markets_by_ticker: dict[str, dict[str, Any]] = {}
         errors: list[KalshiClientError] = []
 
-        try:
-            for market in self._get_paginated(
-                '/markets',
-                response_key='markets',
-                params={'status': 'open', 'mve_filter': 'exclude'},
-                page_size=1000,
-            ):
-                ticker = str(market.get('ticker') or '')
-                if not is_live_weather_ticker(ticker):
-                    continue
-                markets_by_ticker[ticker] = self._normalize_market(market)
-        except KalshiClientError as exc:
-            errors.append(exc)
-
-        try:
-            for event in self._get_paginated(
-                '/events',
-                response_key='events',
-                params={'status': 'open', 'with_nested_markets': 'true'},
-                page_size=200,
-            ):
-                event_ticker = event.get('ticker')
-                for market in event.get('markets') or []:
+        for prefix in LIVE_WEATHER_TICKER_PREFIXES:
+            try:
+                for market in self._get_paginated(
+                    '/markets',
+                    response_key='markets',
+                    params={
+                        'status': 'open',
+                        'series_ticker': prefix,
+                        'mve_filter': 'exclude',
+                    },
+                    page_size=200,
+                ):
                     ticker = str(market.get('ticker') or '')
                     if not is_live_weather_ticker(ticker):
                         continue
-                    normalized = self._normalize_market(
-                        market,
-                        event_ticker=event_ticker,
-                    )
-                    existing = markets_by_ticker.get(ticker, {})
-                    merged = {
-                        **existing,
-                        **{
-                            key: value
-                            for key, value in normalized.items()
-                            if value is not None
-                        },
-                    }
-                    markets_by_ticker[ticker] = merged
-        except KalshiClientError as exc:
-            errors.append(exc)
+                    markets_by_ticker[ticker] = self._normalize_market(market)
+            except KalshiClientError as exc:
+                logger.warning('Failed to fetch markets for series %s: %s', prefix, exc)
+                errors.append(exc)
 
         if not markets_by_ticker:
             if errors:
@@ -212,6 +202,28 @@ class KalshiClient:
                 'Kalshi live market fetch completed with partial data: %s',
                 '; '.join(str(error) for error in errors),
             )
+
+        return sorted(
+            markets_by_ticker.values(),
+            key=lambda row: (
+                row.get('close_time') or datetime.max.replace(tzinfo=UTC),
+                row.get('ticker') or '',
+            ),
+        )
+
+    def fetch_open_markets(self) -> list[dict[str, Any]]:
+        """Fetch all open Kalshi markets, normalized to the shared market shape."""
+        markets_by_ticker: dict[str, dict[str, Any]] = {}
+        for market in self._get_paginated(
+            '/markets',
+            response_key='markets',
+            params={'status': 'open', 'mve_filter': 'exclude'},
+            page_size=1000,
+        ):
+            ticker = str(market.get('ticker') or '')
+            if not ticker:
+                continue
+            markets_by_ticker[ticker] = self._normalize_market(market)
 
         return sorted(
             markets_by_ticker.values(),
@@ -265,10 +277,10 @@ class KalshiClient:
         *,
         event_ticker: str | None = None,
     ) -> dict[str, Any]:
-        yes_bid = _parse_float(_coalesce(payload.get('yes_bid_dollars'), payload.get('yes_bid')))
-        yes_ask = _parse_float(_coalesce(payload.get('yes_ask_dollars'), payload.get('yes_ask')))
-        no_bid = _parse_float(_coalesce(payload.get('no_bid_dollars'), payload.get('no_bid')))
-        no_ask = _parse_float(_coalesce(payload.get('no_ask_dollars'), payload.get('no_ask')))
+        yes_bid = _parse_price(_coalesce(payload.get('yes_bid_dollars'), payload.get('yes_bid')))
+        yes_ask = _parse_price(_coalesce(payload.get('yes_ask_dollars'), payload.get('yes_ask')))
+        no_bid = _parse_price(_coalesce(payload.get('no_bid_dollars'), payload.get('no_bid')))
+        no_ask = _parse_price(_coalesce(payload.get('no_ask_dollars'), payload.get('no_ask')))
 
         if no_bid is None and yes_ask is not None:
             no_bid = _complement_price(yes_ask)
@@ -307,7 +319,7 @@ class KalshiClient:
             'yes_ask': yes_ask,
             'no_bid': no_bid,
             'no_ask': no_ask,
-            'last_price': _parse_float(
+            'last_price': _parse_price(
                 _coalesce(payload.get('last_price_dollars'), payload.get('last_price'))
             ),
             'volume': _parse_float(_coalesce(payload.get('volume_fp'), payload.get('volume'))),

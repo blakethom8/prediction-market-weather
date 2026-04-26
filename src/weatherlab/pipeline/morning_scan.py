@@ -9,7 +9,9 @@ from ..ingest.kalshi_live import KalshiClient, KalshiClientError
 from ._markets import (
     WeatherMarket,
     choose_best_market,
+    estimate_model_probability,
     find_adjacent_market,
+    is_threshold_contract,
     market_bucket_center,
     parse_weather_market,
 )
@@ -19,6 +21,12 @@ logger = logging.getLogger(__name__)
 INFORMED_MARKET_VOLUME = 5_000.0
 MARKET_DISAGREEMENT_THRESHOLD = 0.10
 COLDMATH_MIN_FORECAST_GAP_F = 10.0
+INTRADAY_THRESHOLD_DISTANCE_F = 3.0
+INTRADAY_CITY_WINDOWS: dict[str, tuple[str, ...]] = {
+    'east': ('miami', 'dc', 'phl', 'bos', 'nyc', 'atl'),
+    'central': ('chi', 'hou', 'dal', 'den'),
+    'west': ('lax', 'sea'),
+}
 
 
 def _same_day_local_hour(scan_time_utc: datetime, timezone_name: str, market_date_local: date | None) -> int | None:
@@ -70,15 +78,97 @@ def _downgrade_for_observed_lag(
     return recommendation, None
 
 
+def _contract_type(market: WeatherMarket | None) -> str | None:
+    if market is None:
+        return None
+    if is_threshold_contract(market):
+        return 'threshold'
+    if market.operator == 'between':
+        return 'bucket'
+    return None
+
+
+def _bucket_meets_coldmath_criteria(
+    *,
+    market: WeatherMarket,
+    forecast_high_f: float | int | None,
+) -> bool:
+    if (
+        forecast_high_f is None
+        or market.yes_ask is None
+        or market.operator != 'between'
+        or market.threshold_low_f is None
+        or market.threshold_high_f is None
+    ):
+        return False
+
+    forecast_value = float(forecast_high_f)
+    if market.threshold_low_f <= forecast_value < market.threshold_high_f:
+        return False
+    if forecast_value < market.threshold_low_f:
+        forecast_gap_f = float(market.threshold_low_f) - forecast_value
+    else:
+        forecast_gap_f = forecast_value - float(market.threshold_high_f)
+    no_price = 1.0 - float(market.yes_ask)
+    return forecast_gap_f >= COLDMATH_MIN_FORECAST_GAP_F and no_price >= 0.85
+
+
+def _downgrade_bucket_buy_unless_coldmath(
+    recommendation: str,
+    reason: str,
+    *,
+    best_market: WeatherMarket,
+    forecast_high_f: float | int | None,
+) -> tuple[str, str]:
+    if recommendation != 'BUY' or best_market.operator != 'between':
+        return recommendation, reason
+    if _bucket_meets_coldmath_criteria(market=best_market, forecast_high_f=forecast_high_f):
+        return recommendation, reason
+    return 'WATCH', '[BUCKET - watch only] Bucket contract needs ColdMath gap and price before BUY.'
+
+
 def _default_scan_date() -> date:
     return date.today()
 
 
-def _group_markets_by_city(markets: list[dict], target_date: date) -> dict[str, list[WeatherMarket]]:
-    grouped = {city_key: [] for city_key in STATION_REGISTRY}
+def _normalize_city_keys(city_keys: list[str] | tuple[str, ...] | None = None) -> tuple[str, ...]:
+    if city_keys is None:
+        return tuple(STATION_REGISTRY)
+    normalized: list[str] = []
+    for city_key in city_keys:
+        key = str(city_key or '').strip().lower()
+        if key not in STATION_REGISTRY:
+            raise ValueError(f'Unknown city key: {city_key}')
+        if key not in normalized:
+            normalized.append(key)
+    return tuple(normalized)
+
+
+def city_keys_for_intraday_windows(windows: list[str] | tuple[str, ...] | None = None) -> tuple[str, ...]:
+    selected_windows = tuple(windows or INTRADAY_CITY_WINDOWS)
+    city_keys: list[str] = []
+    for window in selected_windows:
+        key = str(window or '').strip().lower()
+        if key not in INTRADAY_CITY_WINDOWS:
+            raise ValueError(f'Unknown intraday window: {window}')
+        for city_key in INTRADAY_CITY_WINDOWS[key]:
+            if city_key not in city_keys:
+                city_keys.append(city_key)
+    return tuple(city_keys)
+
+
+def _group_markets_by_city(
+    markets: list[dict],
+    target_date: date,
+    city_keys: list[str] | tuple[str, ...] | None = None,
+) -> dict[str, list[WeatherMarket]]:
+    selected_city_keys = _normalize_city_keys(city_keys)
+    grouped = {city_key: [] for city_key in selected_city_keys}
     for raw_market in markets:
         parsed = parse_weather_market(raw_market)
         if parsed is None or parsed.market_date_local != target_date:
+            continue
+        if parsed.city_key not in grouped:
             continue
         grouped.setdefault(parsed.city_key, []).append(parsed)
     return grouped
@@ -142,7 +232,12 @@ def _recommendation_for_city(
     )
     if downgrade_reason is not None:
         return downgraded, downgrade_reason
-    return recommendation, reason
+    return _downgrade_bucket_buy_unless_coldmath(
+        recommendation,
+        reason,
+        best_market=best_market,
+        forecast_high_f=forecast_high_f,
+    )
 
 
 def _favorite_market(markets: list[WeatherMarket]) -> WeatherMarket | None:
@@ -157,9 +252,11 @@ def _favorite_market(markets: list[WeatherMarket]) -> WeatherMarket | None:
 
 def _fetch_scan_context(
     target_date: date | None,
+    city_keys: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[date, datetime, dict[str, list[WeatherMarket]], dict[str, dict]]:
     resolved_date = target_date or _default_scan_date()
     scan_time_utc = datetime.now(UTC).replace(microsecond=0)
+    selected_city_keys = _normalize_city_keys(city_keys)
 
     try:
         kalshi_markets = KalshiClient(timeout_seconds=8.0).fetch_open_weather_markets()
@@ -167,10 +264,11 @@ def _fetch_scan_context(
         logger.warning('Kalshi market fetch failed during morning scan: %s', exc)
         kalshi_markets = []
 
-    markets_by_city = _group_markets_by_city(kalshi_markets, resolved_date)
+    markets_by_city = _group_markets_by_city(kalshi_markets, resolved_date, selected_city_keys)
     validations_by_city = {
         city_key: fetch_morning_validation(metadata.station_id)
         for city_key, metadata in STATION_REGISTRY.items()
+        if city_key in selected_city_keys
     }
     return resolved_date, scan_time_utc, markets_by_city, validations_by_city
 
@@ -350,6 +448,156 @@ def scan_coldmath_plays(
     )
 
 
+def _intraday_threshold_play(
+    *,
+    city_key: str,
+    station_id: str,
+    market: WeatherMarket,
+    validation: dict,
+) -> dict | None:
+    if not is_threshold_contract(market):
+        return None
+    if market.threshold_low_f is None or market.yes_ask is None:
+        return None
+
+    forecast_high = validation.get('forecast_high_f')
+    observed_max = validation.get('observed_max_so_far_f')
+    if forecast_high is None or observed_max is None:
+        return None
+
+    threshold = float(market.threshold_low_f)
+    observed = float(observed_max)
+    forecast = float(forecast_high)
+    distance_to_threshold = round(abs(observed - threshold), 1)
+    if distance_to_threshold > INTRADAY_THRESHOLD_DISTANCE_F:
+        return None
+
+    if market.operator == '>=':
+        if forecast < threshold or observed < threshold - INTRADAY_THRESHOLD_DISTANCE_F:
+            return None
+        recommendation = 'BUY' if observed >= threshold else 'WATCH'
+        thesis = (
+            f'Observed max {_format_temp(observed)} is {distance_to_threshold:.1f}F from '
+            f'the {_format_temp(threshold)} above-threshold contract.'
+        )
+    elif market.operator == '<=':
+        if forecast > threshold or observed >= threshold:
+            return None
+        recommendation = 'WATCH'
+        thesis = (
+            f'Observed max {_format_temp(observed)} remains {distance_to_threshold:.1f}F below '
+            f'the {_format_temp(threshold)} below-threshold contract.'
+        )
+    else:
+        return None
+
+    model_probability = estimate_model_probability(
+        forecast_high,
+        validation.get('forecast_confidence', 'unknown'),
+        market,
+    )
+    edge = None if model_probability is None else round(model_probability - float(market.yes_ask), 4)
+    return {
+        'city': CITY_DISPLAY_NAMES[city_key],
+        'city_key': city_key,
+        'station_id': station_id,
+        'ticker': market.ticker,
+        'bucket_code': market.bucket_code,
+        'label': market.label,
+        'operator': market.operator,
+        'threshold_f': round(threshold, 1),
+        'observed_max_so_far_f': round(observed, 1),
+        'forecast_f': round(forecast, 1),
+        'forecast_confidence': validation.get('forecast_confidence', 'unknown'),
+        'distance_to_threshold_f': distance_to_threshold,
+        'yes_ask': round(float(market.yes_ask), 4),
+        'model_probability': model_probability,
+        'edge': edge,
+        'recommendation': recommendation,
+        'thesis': thesis,
+    }
+
+
+def run_intraday_scan(
+    target_date: date | None = None,
+    windows: list[str] | tuple[str, ...] | None = None,
+    city_keys: list[str] | tuple[str, ...] | None = None,
+    db_path: str | None = None,
+) -> dict:
+    """
+    Run a threshold-only intraday scan for cities in the requested time window.
+    """
+    del db_path  # The intraday scan reads live APIs directly and does not write to DuckDB.
+
+    selected_city_keys = _normalize_city_keys(city_keys) if city_keys is not None else city_keys_for_intraday_windows(windows)
+    resolved_date, scan_time_utc, markets_by_city, validations_by_city = _fetch_scan_context(
+        target_date,
+        selected_city_keys,
+    )
+
+    cities: dict[str, dict] = {}
+    plays: list[dict] = []
+    for city_key in selected_city_keys:
+        metadata = STATION_REGISTRY[city_key]
+        validation = validations_by_city.get(city_key, {})
+        city_markets = markets_by_city.get(city_key, [])
+        threshold_markets = [market for market in city_markets if is_threshold_contract(market)]
+        city_plays: list[dict] = []
+        if metadata.settlement_verified:
+            for market in threshold_markets:
+                play = _intraday_threshold_play(
+                    city_key=city_key,
+                    station_id=metadata.station_id,
+                    market=market,
+                    validation=validation,
+                )
+                if play is not None:
+                    city_plays.append(play)
+
+        city_plays.sort(
+            key=lambda row: (
+                row.get('recommendation') == 'BUY',
+                row.get('edge') if row.get('edge') is not None else float('-inf'),
+                -float(row.get('distance_to_threshold_f') or 0.0),
+                row.get('ticker') or '',
+            ),
+            reverse=True,
+        )
+        plays.extend(city_plays)
+        cities[city_key] = {
+            'city_key': city_key,
+            'city_name': CITY_DISPLAY_NAMES[city_key],
+            'station_id': metadata.station_id,
+            'station_verified': metadata.settlement_verified,
+            'forecast_high_f': validation.get('forecast_high_f'),
+            'forecast_confidence': validation.get('forecast_confidence'),
+            'observed_max_so_far_f': validation.get('observed_max_so_far_f'),
+            'threshold_market_count': len(threshold_markets),
+            'actionable_play_count': len(city_plays),
+            'plays': city_plays,
+            'skip_reason': None if metadata.settlement_verified else metadata.note,
+        }
+
+    plays.sort(
+        key=lambda row: (
+            row.get('recommendation') == 'BUY',
+            row.get('edge') if row.get('edge') is not None else float('-inf'),
+            -float(row.get('distance_to_threshold_f') or 0.0),
+            row.get('ticker') or '',
+        ),
+        reverse=True,
+    )
+
+    return {
+        'scan_date': resolved_date.isoformat(),
+        'scan_time_utc': scan_time_utc.isoformat().replace('+00:00', 'Z'),
+        'windows': list(windows or INTRADAY_CITY_WINDOWS),
+        'city_keys': list(selected_city_keys),
+        'cities': cities,
+        'intraday_plays': plays,
+    }
+
+
 def run_morning_scan(target_date: date | None = None, db_path: str | None = None) -> dict:
     """
     Run the morning weather market scan for the configured settlement stations.
@@ -414,6 +662,7 @@ def run_morning_scan(target_date: date | None = None, db_path: str | None = None
             'best_bucket_code': best_market.bucket_code if best_market is not None else None,
             'best_bucket_label': best_market.label if best_market is not None else None,
             'best_bucket_center_f': market_bucket_center(best_market),
+            'contract_type': _contract_type(best_market),
             'best_bucket_ask': ask,
             'model_probability': model_probability,
             'edge': edge,
@@ -487,8 +736,9 @@ def _format_coldmath_contract_line(play: dict) -> list[str]:
     price = _format_price_cents(play.get('bet_price'))
     profit_cents = int(round(float(play.get('win_per_contract') or 0.0) * 100))
     icon = '✅' if play.get('recommendation') == 'BUY' else '👀'
+    bucket_note = ' [BUCKET - watch only]' if play.get('contract_type') == 'bucket' else ''
     lines = [
-        f"{icon} {play['city']} {play['label']} - {side} @ {price} (+{profit_cents}¢/contract)",
+        f"{icon} {play['city']} {play['label']} - {side} @ {price} (+{profit_cents}¢/contract){bucket_note}",
     ]
 
     forecast_gap = _format_degree_value(play.get('forecast_gap_f'))
@@ -533,8 +783,11 @@ def format_scan_report(scan_results: dict, include_all: bool = False) -> str:
     def render_row(icon: str, row: dict) -> list[str]:
         bucket = row.get('best_bucket_code') or 'NO-BUCKET'
         label = row.get('best_bucket_label') or row.get('recommendation_reason') or 'No bucket'
+        bucket_note = ''
+        if row.get('contract_type') == 'bucket' and row.get('recommendation') in {'BUY', 'WATCH'}:
+            bucket_note = ' [BUCKET - watch only]'
         lines = [
-            f"{icon} {row['city_name']} {bucket} ({label}) - ask {_format_price_cents(row.get('best_bucket_ask'))}, edge {_format_edge_cents(row.get('edge'))}",
+            f"{icon} {row['city_name']} {bucket} ({label}){bucket_note} - ask {_format_price_cents(row.get('best_bucket_ask'))}, edge {_format_edge_cents(row.get('edge'))}",
         ]
         detail = (
             f"   NWS={_format_temp(row.get('forecast_high_f'))} "
@@ -607,4 +860,41 @@ def format_scan_report(scan_results: dict, include_all: bool = False) -> str:
         lines.pop()
     lines.append('')
     lines.append('Ready to place? Reply with cities to bet or SKIP ALL.')
+    return '\n'.join(lines)
+
+
+def format_intraday_scan_report(scan_results: dict) -> str:
+    """
+    Format threshold-focused intraday scan results for notification.
+    """
+    windows = ', '.join(str(window).upper() for window in scan_results.get('windows') or [])
+    lines = [f'🎯 INTRADAY THRESHOLD SCAN - {_format_date_label(scan_results["scan_date"])}']
+    if windows:
+        lines.append(f'Window: {windows}')
+    lines.append('')
+
+    plays = list(scan_results.get('intraday_plays') or [])
+    if not plays:
+        lines.append('No actionable threshold plays found.')
+        return '\n'.join(lines)
+
+    for play in plays:
+        icon = '✅' if play.get('recommendation') == 'BUY' else '👀'
+        edge = _format_edge_cents(play.get('edge'))
+        ask = _format_price_cents(play.get('yes_ask'))
+        lines.append(
+            f"{icon} {play['city']} {play.get('bucket_code') or play['ticker']} "
+            f"({play['label']}) - ask {ask}, edge {edge}"
+        )
+        lines.append(
+            f"   NWS={_format_temp(play.get('forecast_f'))} "
+            f"({play.get('forecast_confidence', 'unknown')} conf), "
+            f"observed max={_format_temp(play.get('observed_max_so_far_f'))}, "
+            f"threshold={_format_temp(play.get('threshold_f'))}"
+        )
+        lines.append(f"   {play['thesis']}")
+        lines.append('')
+
+    while lines and lines[-1] == '':
+        lines.pop()
     return '\n'.join(lines)

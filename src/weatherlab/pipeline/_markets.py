@@ -146,6 +146,10 @@ def market_bucket_center(market: WeatherMarket | None) -> float | None:
     return float(market.threshold_low_f)
 
 
+def is_threshold_contract(market: WeatherMarket) -> bool:
+    return market.operator in {'>=', '<='}
+
+
 def parse_weather_market(market: dict[str, Any]) -> WeatherMarket | None:
     ticker = str(market.get('ticker') or '').strip()
     if not ticker:

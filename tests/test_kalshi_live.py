@@ -155,6 +155,41 @@ class KalshiClientTests(unittest.TestCase):
 
         self.assertEqual(markets, [])
 
+    def test_fetch_open_markets_returns_all_normalized_markets(self):
+        client = KalshiClient(key_id='dummy-key-id', private_key_path='unused.pem')
+
+        with patch.object(
+            client,
+            '_get_paginated',
+            return_value=[
+                {
+                    'ticker': 'KXCPI-26MAY',
+                    'title': 'Will CPI be below 3.0%?',
+                    'close_time': '2026-05-01T12:00:00Z',
+                    'yes_ask': 14,
+                    'volume': '750',
+                },
+                {
+                    'ticker': 'KXHIGHCHI-26MAY01-T70',
+                    'title': 'Will Chicago high be above 70?',
+                    'close_time': '2026-05-01T00:00:00Z',
+                    'yes_ask_dollars': '0.42',
+                    'volume_fp': '100.00',
+                },
+            ],
+        ) as get_paginated:
+            markets = client.fetch_open_markets()
+
+        get_paginated.assert_called_once_with(
+            '/markets',
+            response_key='markets',
+            params={'status': 'open', 'mve_filter': 'exclude'},
+            page_size=1000,
+        )
+        self.assertEqual([market['ticker'] for market in markets], ['KXHIGHCHI-26MAY01-T70', 'KXCPI-26MAY'])
+        self.assertAlmostEqual(markets[1]['yes_ask'], 0.14)
+        self.assertEqual(markets[1]['volume'], 750.0)
+
     def test_auth_errors_raise_clean_exception(self):
         session = FakeSession(
             [FakeResponse(401, {'error': 'bad signature'})]

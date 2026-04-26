@@ -2,7 +2,7 @@ import unittest
 from datetime import date
 from unittest.mock import Mock, patch
 
-from weatherlab.pipeline._markets import choose_best_market, estimate_model_probability, parse_weather_market
+from weatherlab.pipeline._markets import choose_best_market, estimate_model_probability, is_threshold_contract, parse_weather_market
 from weatherlab.pipeline.morning_scan import _recommendation_for_city, format_scan_report, run_morning_scan
 
 
@@ -32,6 +32,60 @@ class MorningScanTests(unittest.TestCase):
 
         self.assertEqual(recommendation, 'BUY')
         self.assertIn('Observed max already reached', reason)
+
+    def test_recommendation_downgrades_bucket_buy_to_watch(self):
+        market = parse_weather_market(
+            {
+                'ticker': 'KXHIGHMIA-26APR26-B82.5',
+                'title': 'Will the high temp in Miami be between 82 and 83 degrees on Apr 26, 2026?',
+                'yes_ask': 0.39,
+            }
+        )
+        self.assertIsNotNone(market)
+        assert market is not None
+        self.assertFalse(is_threshold_contract(market))
+
+        recommendation, reason = _recommendation_for_city(
+            station_verified=True,
+            confidence='high',
+            best_market=market,
+            model_probability=0.65,
+            adjacent_market=None,
+            observed_max_so_far_f=76.0,
+            forecast_high_f=83.0,
+            obs_divergence_f=2.0,
+            local_hour=10,
+        )
+
+        self.assertEqual(recommendation, 'WATCH')
+        self.assertIn('[BUCKET - watch only]', reason)
+
+    def test_recommendation_keeps_threshold_buy_with_same_edge(self):
+        market = parse_weather_market(
+            {
+                'ticker': 'KXHIGHMIA-26APR26-A80',
+                'title': 'Will the high temp in Miami be above 80 degrees on Apr 26, 2026?',
+                'yes_ask': 0.39,
+            }
+        )
+        self.assertIsNotNone(market)
+        assert market is not None
+        self.assertTrue(is_threshold_contract(market))
+
+        recommendation, reason = _recommendation_for_city(
+            station_verified=True,
+            confidence='high',
+            best_market=market,
+            model_probability=0.65,
+            adjacent_market=None,
+            observed_max_so_far_f=76.0,
+            forecast_high_f=83.0,
+            obs_divergence_f=2.0,
+            local_hour=10,
+        )
+
+        self.assertEqual(recommendation, 'BUY')
+        self.assertEqual(reason, 'Positive edge with high-confidence station validation.')
 
     def test_recommendation_downgrades_when_observed_max_lags_forecast_after_11am(self):
         market = parse_weather_market(
@@ -127,7 +181,8 @@ class MorningScanTests(unittest.TestCase):
 
         miami = scan['cities']['miami']
         self.assertEqual(miami['best_bucket'], 'KXHIGHMIA-26MAR24-B82.5')
-        self.assertEqual(miami['recommendation'], 'BUY')
+        self.assertEqual(miami['contract_type'], 'bucket')
+        self.assertEqual(miami['recommendation'], 'WATCH')
         self.assertEqual(miami['model_probability'], 0.65)
         self.assertEqual(miami['edge'], 0.26)
 
@@ -139,7 +194,7 @@ class MorningScanTests(unittest.TestCase):
         self.assertEqual(boston['recommendation'], 'SKIP')
         self.assertIn('Observed max already exceeds', boston['recommendation_reason'])
 
-        self.assertEqual(scan['top_picks'], ['miami'])
+        self.assertEqual(scan['top_picks'], [])
 
     def test_estimate_model_probability_adjusts_for_confidence(self):
         market = parse_weather_market(
@@ -243,6 +298,7 @@ class MorningScanTests(unittest.TestCase):
                     'best_bucket': 'KXHIGHMIA-26MAR24-B82.5',
                     'best_bucket_code': 'B82.5',
                     'best_bucket_label': '82° to 83°',
+                    'contract_type': 'bucket',
                     'best_bucket_ask': 0.39,
                     'model_probability': 0.65,
                     'edge': 0.26,
@@ -276,6 +332,7 @@ class MorningScanTests(unittest.TestCase):
         self.assertIn('🎯 WEATHER BET SCAN - March 24', report)
         self.assertIn('TOP PICKS:', report)
         self.assertIn('✅ Miami B82.5', report)
+        self.assertIn('[BUCKET - watch only]', report)
         self.assertIn('SKIP:', report)
         self.assertIn('⏭ Boston T36', report)
 
