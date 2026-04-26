@@ -16,7 +16,7 @@ def _default_validation() -> dict:
 
 
 class ColdMathScanTests(unittest.TestCase):
-    def _run_scan(self, *, markets: list[dict], validations: dict[str, dict], min_forecast_gap_f: float = 8.0) -> list[dict]:
+    def _run_scan(self, *, markets: list[dict], validations: dict[str, dict], min_forecast_gap_f: float = 10.0) -> list[dict]:
         fake_client = Mock()
         fake_client.fetch_open_weather_markets.return_value = markets
 
@@ -46,7 +46,7 @@ class ColdMathScanTests(unittest.TestCase):
             ],
             validations={
                 'KLAX': {
-                    'forecast_high_f': 68,
+                    'forecast_high_f': 66,
                     'observed_max_so_far_f': 61.0,
                     'obs_count': 5,
                     'forecast_confidence': 'high',
@@ -76,7 +76,7 @@ class ColdMathScanTests(unittest.TestCase):
         self.assertEqual(threshold_play['label'], 'below 76°F')
         self.assertEqual(threshold_play['bet_side'], 'YES')
         self.assertEqual(threshold_play['yes_ask'], 0.90)
-        self.assertEqual(threshold_play['forecast_gap_f'], 8.0)
+        self.assertEqual(threshold_play['forecast_gap_f'], 10.0)
 
     def test_scan_coldmath_confidence_scoring(self):
         plays = self._run_scan(
@@ -126,7 +126,7 @@ class ColdMathScanTests(unittest.TestCase):
 
         self.assertEqual(plays, [])
 
-    def test_scan_coldmath_respects_eight_degree_gap_filter(self):
+    def test_scan_coldmath_respects_ten_degree_gap_filter(self):
         plays = self._run_scan(
             markets=[
                 {
@@ -135,13 +135,13 @@ class ColdMathScanTests(unittest.TestCase):
                     'yes_ask': 0.90,
                 },
                 {
-                    'ticker': 'KXHIGHTDC-26MAR24-T52',
-                    'title': 'Will the high temp in Washington, DC be below 52 degrees on Mar 24, 2026?',
+                    'ticker': 'KXHIGHTDC-26MAR24-T54',
+                    'title': 'Will the high temp in Washington, DC be below 54 degrees on Mar 24, 2026?',
                     'yes_ask': 0.90,
                 },
             ],
             validations={
-                'KLAX': {'forecast_high_f': 68, 'observed_max_so_far_f': 61.0, 'obs_count': 5, 'forecast_confidence': 'high', 'note': 'Tracking well.'},
+                'KLAX': {'forecast_high_f': 66, 'observed_max_so_far_f': 61.0, 'obs_count': 5, 'forecast_confidence': 'high', 'note': 'Tracking well.'},
                 'KDCA': {'forecast_high_f': 45, 'observed_max_so_far_f': 39.0, 'obs_count': 5, 'forecast_confidence': 'high', 'note': 'Tracking well.'},
             },
         )

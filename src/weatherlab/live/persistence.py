@@ -8,10 +8,12 @@ live path is easier to distinguish from research-facing code.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+import logging
 from pathlib import Path
 from typing import Any
 
 from ..db import connect
+from ..pipeline.calibration_reviews import get_settled_bet_count, maybe_write_calibration_reviews
 from ..utils.ids import new_id
 from ._shared import (
     json_dumps as _json_dumps,
@@ -19,6 +21,8 @@ from ._shared import (
     normalize_city_ids as _normalize_city_ids,
     serialize_value as _serialize_value,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _insert_strategy_review_event(
@@ -635,6 +639,11 @@ def settle_paper_bet(
 ) -> None:
     review_payload = review or {}
     settled_at_utc = datetime.now(UTC)
+    try:
+        settled_count_before = get_settled_bet_count(db_path=db_path)
+    except Exception:
+        logger.exception('Failed to count settled bets before paper-bet settlement')
+        settled_count_before = None
     con = connect(db_path=db_path)
     try:
         row = con.execute(
@@ -729,3 +738,12 @@ def settle_paper_bet(
             )
     finally:
         con.close()
+
+    if settled_count_before is not None:
+        try:
+            maybe_write_calibration_reviews(
+                before_count=settled_count_before,
+                after_count=get_settled_bet_count(db_path=db_path),
+            )
+        except Exception:
+            logger.exception('Failed to write automatic calibration review')

@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 INFORMED_MARKET_VOLUME = 5_000.0
 MARKET_DISAGREEMENT_THRESHOLD = 0.10
+COLDMATH_MIN_FORECAST_GAP_F = 10.0
 
 
 def _same_day_local_hour(scan_time_utc: datetime, timezone_name: str, market_date_local: date | None) -> int | None:
@@ -331,7 +332,7 @@ def _scan_coldmath_from_context(
 def scan_coldmath_plays(
     target_date: date | None = None,
     min_yes_price: float = 0.85,
-    min_forecast_gap_f: float = 8.0,
+    min_forecast_gap_f: float = COLDMATH_MIN_FORECAST_GAP_F,
     db_path=None,
 ) -> list[dict]:
     """
@@ -448,7 +449,7 @@ def run_morning_scan(target_date: date | None = None, db_path: str | None = None
             markets_by_city=markets_by_city,
             validations_by_city=validations_by_city,
             min_yes_price=0.85,
-            min_forecast_gap_f=8.0,
+            min_forecast_gap_f=COLDMATH_MIN_FORECAST_GAP_F,
         ),
         'top_picks': top_picks,
     }
@@ -594,7 +595,10 @@ def format_scan_report(scan_results: dict, include_all: bool = False) -> str:
             lines.extend(_format_coldmath_contract_line(play))
             lines.append('')
     else:
-        lines.append('No ColdMath plays found today - all forecast gaps are below 8°F.')
+        lines.append(
+            f'No ColdMath plays found today - all forecast gaps are below '
+            f'{_format_degree_value(COLDMATH_MIN_FORECAST_GAP_F)}°F.'
+        )
         lines.append('')
 
     lines.append('Auto-bet fires at 10 AM PDT.')

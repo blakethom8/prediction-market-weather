@@ -12,6 +12,7 @@ from ..db import connect
 from ..forecast.asos import STATION_IDS
 from ..ingest.kalshi_live import KalshiClient
 from ..live.live_orders import fetch_live_orders, settle_live_order as persist_live_order_settlement
+from ..pipeline.calibration_reviews import get_settled_bet_count, maybe_write_calibration_reviews
 from ..pipeline._markets import (
     display_name_for_city,
     market_bucket_center,
@@ -463,6 +464,11 @@ def settle_paper_bet(
     paper_bet_id = str(paper_bet.get('paper_bet_id') or '')
     quantity = float(paper_bet.get('quantity') or 0)
     limit_price = float(paper_bet.get('limit_price') or 0)
+    try:
+        settled_count_before = get_settled_bet_count(db_path=db_path)
+    except Exception:
+        logger.exception('Failed to count settled bets before paper-bet settlement')
+        settled_count_before = None
 
     summary: dict[str, Any] = {
         'paper_bet_id': paper_bet_id,
@@ -572,6 +578,15 @@ def settle_paper_bet(
     )
 
     logger.info('Settled paper bet %s on %s: %s PnL=$%.4f', paper_bet_id, ticker, result.upper(), realized_pnl)
+
+    if settled_count_before is not None:
+        try:
+            maybe_write_calibration_reviews(
+                before_count=settled_count_before,
+                after_count=get_settled_bet_count(db_path=db_path),
+            )
+        except Exception:
+            logger.exception('Failed to write automatic calibration review')
 
     summary.update({
         'settled': True,
